@@ -2,33 +2,34 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Noter le joueur</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Noter un joueur - FC Chalosse</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
         .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input, textarea { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
-        .btn { background: #28a745; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        /* J'ai grossi un peu la police de la note pour que ce soit plus joli */
+        input { width: 100%; margin: 10px 0; padding: 15px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 1.5em; text-align: center; }
+        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
     </style>
 </head>
 <body>
+
     <div class="card">
-        <h2>Noter le match</h2>
-        <p id="nom-joueur">Chargement...</p>
+        <h2 id="nom-joueur">Chargement...</h2>
+        <p>Attribue une note sur 10 (ex: 7.5 ou 7,5)</p>
         
-        <label>Note (0 à 10) :</label>
-        <input type="number" id="note" min="0" max="10" value="5">
+        <!-- C'est ici la magie : min="0", max="10" et surtout step="0.5" -->
+        <input type="number" id="note" min="0" max="10" step="0.5" placeholder="Ex: 6.5">
         
-        <label>Commentaire :</label>
-        <textarea id="commentaire" placeholder="Ton avis sur le match..."></textarea>
-        
-        <button class="btn" onclick="envoyerNote()">Valider la note</button>
-        <br><br>
-        <a href="index.html">Retour à la liste</a>
+        <button class="btn" onclick="enregistrerNote()">Valider la note</button>
+        <br>
+        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
@@ -42,35 +43,44 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // Récupérer l'ID du joueur dans l'URL
-        const params = new URLSearchParams(window.location.search);
-        const idJoueur = params.get('id');
+        // Récupère l'ID du joueur depuis l'URL de la page
+        const urlParams = new URLSearchParams(window.location.search);
+        const joueurId = urlParams.get('id');
 
-        // Afficher le nom du joueur
-        async function chargerInfos() {
-            const docSnap = await getDoc(doc(db, "utilisateurs", idJoueur));
+        // Va chercher le nom du joueur dans la base de données pour l'afficher
+        async function chargerJoueur() {
+            if(!joueurId) return;
+            const docSnap = await getDoc(doc(db, "utilisateurs", joueurId));
             if (docSnap.exists()) {
-                document.getElementById('nom-joueur').innerText = docSnap.data().prenom + " " + docSnap.data().nom;
+                document.getElementById('nom-joueur').innerText = "Noter " + docSnap.data().prenom + " " + docSnap.data().nom;
+            } else {
+                document.getElementById('nom-joueur').innerText = "Joueur introuvable";
             }
         }
-        chargerInfos();
+        
+        chargerJoueur();
 
-        // Envoyer la note à Firebase
-        window.envoyerNote = async function() {
-            const noteVal = document.getElementById('note').value;
-            const commVal = document.getElementById('commentaire').value;
+        window.enregistrerNote = async function() {
+            // On utilise parseFloat pour bien conserver les chiffres après la virgule
+            const valeurNote = parseFloat(document.getElementById('note').value);
+
+            // Vérification de la note
+            if (isNaN(valeurNote) || valeurNote < 0 || valeurNote > 10) {
+                alert("Merci de rentrer une note valide comprise entre 0 et 10 !");
+                return;
+            }
 
             try {
+                // Enregistrement de la note dans la collection "notes"
                 await addDoc(collection(db, "notes"), {
-                    joueur_id: idJoueur,
-                    note: parseInt(noteVal),
-                    commentaire: commVal,
+                    joueur_id: joueurId,
+                    note: valeurNote,
                     date: new Date()
                 });
-                alert("Note enregistrée !");
-                window.location.href = "index.html";
+                alert("✅ Note enregistrée avec succès !");
+                window.location.href = "index.html"; // Retour à l'accueil
             } catch (e) {
-                alert("Erreur : " + e.message);
+                alert("❌ Erreur lors de l'enregistrement : " + e.message);
             }
         }
     </script>

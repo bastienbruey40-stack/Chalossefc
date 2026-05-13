@@ -9,68 +9,76 @@
         .container { max-width: 600px; margin: auto; }
         h1 { display: flex; align-items: center; justify-content: center; gap: 10px; }
         
-        /* Style de la barre de connexion en haut */
         #info-connexion { background: white; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         
-        /* Style des cartes des joueurs */
-        .card { background: white; padding: 15px 20px; margin: 10px 0; border-radius: 12px; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; text-align: left; }
-        .joueur-info strong { font-size: 1.1em; }
-        .joueur-info span { color: #6c757d; font-size: 0.9em; }
-        
-        /* Les boutons */
-        .btn-noter { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; text-decoration: none; }
         .btn-jaune { display:inline-block; background:#ffc107; color:black; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold; margin: 5px; }
         .btn-vert { display:none; background:#28a745; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold; margin: 5px; }
+        .btn-deconnexion { background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.9em; margin-left: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: background 0.2s; }
+        .btn-deconnexion:hover { background: #c82333; }
+
+        .titre-section { text-align: left; font-weight: bold; margin-top: 20px; margin-bottom: 10px; font-size: 1.1em; color: #333; }
         
-        .btn-deconnexion { 
-            background: #dc3545; 
-            color: white; 
-            border: none; 
-            padding: 6px 12px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            font-size: 0.9em; 
-            margin-left: 15px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: background 0.2s;
+        /* NOUVEAU DESIGN : Liste des matchs (Affiches) */
+        .match-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 15px; }
+        
+        .match-row { 
+            background: white; border: 2px solid transparent; border-radius: 12px; padding: 15px; 
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
         }
-        .btn-deconnexion:hover {
-            background: #c82333; /* Devient un peu plus foncé quand on passe la souris */
-        }
+        .match-row:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
+        .match-row.active { border-color: #007bff; background: #e9f2ff; }
+        
+        .match-content { display: flex; justify-content: space-between; align-items: center; }
+        
+        .team { display: flex; align-items: center; gap: 10px; flex: 1; }
+        .team.right { justify-content: flex-end; text-align: right; }
+        .team-name { font-weight: bold; font-size: 0.95em; color: #333; }
+        
+        .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: #f0f2f5; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .score-divider { font-weight: bold; font-size: 1.5em; color: #adb5bd; padding: 0 10px; }
+        
+        .match-date { text-align: center; font-size: 0.85em; color: #6c757d; margin-top: 10px; }
+
+        /* Les cartes des joueurs */
+        .card { background: white; padding: 15px 20px; margin: 10px 0; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .joueur-info { flex-grow: 1; }
+        .joueur-info strong { font-size: 1.1em; }
+        .joueur-info span { color: #6c757d; font-size: 0.9em; }
+        .btn-noter { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; text-decoration: none; margin-right: 10px; }
+        .btn-supprimer { background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1.1em; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <!-- Barre de statut de connexion -->
         <div id="info-connexion">Chargement...</div>
 
         <h1>⚽ FC Chalosse</h1>
         
-        <!-- Boutons d'action -->
-        <div style="margin-bottom: 25px;">
+        <div style="margin-bottom: 20px;">
             <a href="classement.html" class="btn-jaune">🏆 Voir le Classement</a>
-            <!-- Ce bouton est caché par défaut grâce à la classe .btn-vert -->
             <a href="ajouter.html" id="btn-admin" class="btn-vert">➕ Ajouter un joueur</a>
+            <a href="ajouter_match.html" id="btn-admin-match" class="btn-vert">➕ Ajouter un match</a>
         </div>
 
-        <p>Sélectionnez un joueur pour le noter</p>
+        <!-- ZONE DES MATCHS -->
+        <div class="titre-section">📅 Sélectionner un match :</div>
+        <div id="liste-matchs" class="match-list">
+            <p>Chargement des matchs...</p>
+        </div>
         
-        <!-- La liste des joueurs s'affichera ici -->
+        <!-- ZONE DE L'EFFECTIF -->
+        <div class="titre-section" style="margin-top: 10px;">👕 Effectif à noter :</div>
         <div id="liste-joueurs">
-            <p>Chargement de l'effectif...</p>
+            <p>Sélectionnez un match pour afficher les joueurs.</p>
         </div>
     </div>
 
-    <!-- Script de gestion de la page -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // Configuration Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
@@ -84,30 +92,103 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // 1. Gérer l'affichage Admin et le statut de connexion
+        let estAdmin = false; 
+        window.matchSelectionne = ""; 
+
         onAuthStateChanged(auth, async (user) => {
             const infoDiv = document.getElementById('info-connexion');
             if (user) {
                 infoDiv.innerHTML = `Connecté en tant que <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Déconnexion 🚪</button>`;
                 
-                // Activer le bouton de déconnexion
                 document.getElementById('btn-deconnecter').addEventListener('click', () => {
                     signOut(auth).then(() => window.location.reload());
                 });
 
-                // Vérifier si l'utilisateur est Admin dans la base de données
                 const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
                 if (docSnap.exists() && docSnap.data().role === "admin") {
-                    document.getElementById('btn-admin').style.display = 'inline-block'; // On affiche le bouton Ajouter
+                    estAdmin = true;
+                    document.getElementById('btn-admin').style.display = 'inline-block';
+                    document.getElementById('btn-admin-match').style.display = 'inline-block';
                 }
             } else {
                 infoDiv.innerHTML = `Tu n'es pas connecté. <a href="connexion.html" style="color:#007bff; font-weight:bold;">S'inscrire / Se connecter</a>`;
+                estAdmin = false;
             }
+            
+            chargerMatchs(); 
         });
 
-        // 2. Récupérer et afficher les joueurs
-        async function chargerJoueurs() {
+        async function chargerMatchs() {
+            const conteneurMatchs = document.getElementById('liste-matchs');
+            const querySnapshot = await getDocs(collection(db, "matchs"));
+            
+            let html = "";
+            let premierMatchId = null;
+
+            querySnapshot.forEach((doc) => {
+                let data = doc.data();
+                if (!premierMatchId) premierMatchId = doc.id; 
+
+                // Logo adverse (ou bouclier par défaut)
+                let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo" alt="Logo">` : `<div class="logo">🛡️</div>`;
+                // Logo de Chalosse (j'ai mis un ballon, tu pourras le changer si tu as le lien de l'image de ton club)
+                let logoChalosse = `<div class="logo" style="background:#fff; border:1px solid #ddd;">⚽</div>`;
+
+                html += `
+                    <div class="match-row" id="row-${doc.id}" onclick="selectionnerMatch('${doc.id}')">
+                        <div class="match-content">
+                            <div class="team">
+                                ${logoChalosse}
+                                <span class="team-name">FC Chalosse</span>
+                            </div>
+                            <div class="score-divider">-</div>
+                            <div class="team right">
+                                <span class="team-name">${data.adversaire || "Adversaire"}</span>
+                                ${logoAdversaire}
+                            </div>
+                        </div>
+                        <div class="match-date">📅 ${data.date || "Date inconnue"}</div>
+                    </div>
+                `;
+            });
+
+            if (html === "") {
+                conteneurMatchs.innerHTML = "<p>Aucun match trouvé dans la base.</p>";
+            } else {
+                conteneurMatchs.innerHTML = html;
+                if (premierMatchId) {
+                    window.selectionnerMatch(premierMatchId);
+                }
+            }
+        }
+
+        window.selectionnerMatch = function(matchId) {
+            window.matchSelectionne = matchId;
+            
+            // Retirer la surbrillance de tous les matchs
+            document.querySelectorAll('.match-row').forEach(row => {
+                row.classList.remove('active');
+            });
+            
+            // Mettre en surbrillance le match cliqué
+            document.getElementById(`row-${matchId}`).classList.add('active');
+
+            window.chargerJoueurs();
+        }
+
+        window.supprimerJoueur = async function(idJoueur, nomJoueur) {
+            if (confirm(`Es-tu sûr de vouloir supprimer ${nomJoueur} de l'effectif ?`)) {
+                await deleteDoc(doc(db, "utilisateurs", idJoueur));
+                window.chargerJoueurs();
+            }
+        };
+
+        window.chargerJoueurs = async function() {
             const conteneur = document.getElementById('liste-joueurs');
+            const matchId = window.matchSelectionne;
+
+            if (!matchId) return;
+
             const querySnapshot = await getDocs(collection(db, "utilisateurs"));
             
             let html = "";
@@ -120,7 +201,10 @@
                                 <strong>${data.prenom} ${data.nom}</strong><br>
                                 <span>${data.poste || "Non renseigné"}</span>
                             </div>
-                            <a href="noter.html?id=${doc.id}" class="btn-noter">Noter</a>
+                            <div style="display: flex; gap: 5px;">
+                                <a href="noter.html?id=${doc.id}&match=${matchId}" class="btn-noter">Noter</a>
+                                ${estAdmin ? `<button onclick="supprimerJoueur('${doc.id}', '${data.prenom}')" class="btn-supprimer" title="Supprimer">🗑️</button>` : ''}
+                            </div>
                         </div>
                     `;
                 }
@@ -132,8 +216,6 @@
                 conteneur.innerHTML = html;
             }
         }
-
-        chargerJoueurs();
     </script>
 </body>
 </html>
