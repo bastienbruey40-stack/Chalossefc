@@ -7,29 +7,35 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
         .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        /* J'ai grossi un peu la police de la note pour que ce soit plus joli */
         input { width: 100%; margin: 10px 0; padding: 15px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 1.5em; text-align: center; }
         .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
+        
+        /* Zone pour le message "Déjà noté" */
+        #message-deja-note { display: none; background: #e9ecef; color: #495057; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.95em; }
     </style>
 </head>
 <body>
 
     <div class="card">
         <h2 id="nom-joueur">Chargement...</h2>
+        
+        <!-- Le message qui apparaîtra si la note existe déjà -->
+        <div id="message-deja-note"></div>
+
         <p>Attribue une note sur 10 (ex: 7.5 ou 7,5)</p>
         
-        <!-- C'est ici la magie : min="0", max="10" et surtout step="0.5" -->
         <input type="number" id="note" min="0" max="10" step="0.5" placeholder="Ex: 6.5">
         
-        <button class="btn" onclick="enregistrerNote()">Valider la note</button>
+        <button class="btn" id="btn-valider" onclick="enregistrerNote()">Valider la note</button>
         <br>
         <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
@@ -42,12 +48,25 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
 
-        // Récupère l'ID du joueur depuis l'URL de la page
         const urlParams = new URLSearchParams(window.location.search);
         const joueurId = urlParams.get('id');
+        const matchId = urlParams.get('match');
 
-        // Va chercher le nom du joueur dans la base de données pour l'afficher
+        let utilisateurConnecte = null;
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                utilisateurConnecte = user;
+                // Dès qu'on sait qui est connecté, on vérifie s'il a déjà noté ce joueur
+                verifierNoteExistante();
+            } else {
+                alert("Tu dois être connecté pour pouvoir voter !");
+                window.location.href = "connexion.html";
+            }
+        });
+
         async function chargerJoueur() {
             if(!joueurId) return;
             const docSnap = await getDoc(doc(db, "utilisateurs", joueurId));
@@ -60,25 +79,52 @@
         
         chargerJoueur();
 
+        // NOUVELLE FONCTION : Vérifie si une note est déjà dans la base
+        async function verifierNoteExistante() {
+            if (!matchId || !joueurId || !utilisateurConnecte) return;
+            
+            const identifiantUnique = `${matchId}_${joueurId}_${utilisateurConnecte.uid}`;
+            const docSnap = await getDoc(doc(db, "notes", identifiantUnique));
+            
+            if (docSnap.exists()) {
+                const notePrecedente = docSnap.data().note;
+                
+                // On affiche le message
+                const divMessage = document.getElementById('message-deja-note');
+                divMessage.style.display = "block";
+                divMessage.innerHTML = `✅ Tu as déjà donné la note de <b>${notePrecedente}/10</b> à ce joueur. Tu peux la modifier ci-dessous.`;
+                
+                // On pré-remplit le champ
+                document.getElementById('note').value = notePrecedente;
+                
+                // On change le texte du bouton
+                document.getElementById('btn-valider').innerText = "Mettre à jour ma note";
+            }
+        }
+
         window.enregistrerNote = async function() {
-            // On utilise parseFloat pour bien conserver les chiffres après la virgule
+            if (!utilisateurConnecte) return alert("Erreur : tu n'es pas connecté !");
+            if (!matchId) return alert("Erreur : aucun match n'a été sélectionné.");
+
             const valeurNote = parseFloat(document.getElementById('note').value);
 
-            // Vérification de la note
             if (isNaN(valeurNote) || valeurNote < 0 || valeurNote > 10) {
                 alert("Merci de rentrer une note valide comprise entre 0 et 10 !");
                 return;
             }
 
             try {
-                // Enregistrement de la note dans la collection "notes"
-                await addDoc(collection(db, "notes"), {
+                const identifiantUnique = `${matchId}_${joueurId}_${utilisateurConnecte.uid}`;
+
+                await setDoc(doc(db, "notes", identifiantUnique), {
                     joueur_id: joueurId,
+                    match_id: matchId,
+                    votant_id: utilisateurConnecte.uid,
                     note: valeurNote,
-                    date: new Date()
+                    date: new Date().toISOString()
                 });
-                alert("✅ Note enregistrée avec succès !");
-                window.location.href = "index.html"; // Retour à l'accueil
+
+                window.location.href = "index.html"; 
             } catch (e) {
                 alert("❌ Erreur lors de l'enregistrement : " + e.message);
             }

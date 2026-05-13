@@ -9,8 +9,10 @@
         .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         input { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
         .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .btn-retour { display: inline-block; margin-top: 20px; color: #6c757d; text-decoration: none; font-size: 0.9em; }
         .lien-inscription { display: block; margin-top: 15px; color: #28a745; text-decoration: none; font-weight: bold; }
+        
+        /* Design du message d'erreur qui s'affichera au besoin */
+        #msg-erreur { display: none; background: #dc3545; color: white; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 0.9em; text-align: left;}
     </style>
 </head>
 <body>
@@ -18,6 +20,9 @@
     <div class="card">
         <h2>🔐 Se connecter</h2>
         <p>Connecte-toi pour noter les joueurs</p>
+        
+        <!-- C'est ici que l'erreur s'affichera -->
+        <div id="msg-erreur"></div>
         
         <label style="text-align: left; display: block; margin-top: 10px;">Adresse Email :</label>
         <input type="email" id="email" placeholder="ton.nom@email.com">
@@ -28,14 +33,11 @@
         <button class="btn" onclick="connecter()">Se connecter</button>
         
         <a href="inscription.html" class="lien-inscription">Pas encore de compte ? S'inscrire ici</a>
-        <br>
-        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        // On importe la fonction de connexion (signIn) au lieu de l'inscription
-        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
@@ -49,22 +51,34 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
 
+        // Si l'utilisateur est DEJA connecté, on le renvoie direct à l'accueil
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                window.location.href = "index.html";
+            }
+        });
+
         window.connecter = async function() {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const errDiv = document.getElementById('msg-erreur');
+            
+            // On cache l'erreur à chaque nouvelle tentative
+            errDiv.style.display = "none";
 
             if(email === "" || password === "") {
-                alert("Merci de remplir ton email et ton mot de passe.");
+                errDiv.innerText = "⚠️ Merci de remplir ton email et ton mot de passe.";
+                errDiv.style.display = "block";
                 return;
             }
 
             try {
-                // On demande à Firebase de vérifier les identifiants
+                // Tentative de connexion (si ça marche, le onAuthStateChanged au dessus va s'activer et te rediriger tout seul !)
                 await signInWithEmailAndPassword(auth, email, password);
-                window.location.href = "index.html"; // Redirection vers l'accueil si ça marche
             } catch (error) {
-                // Si le mot de passe est faux ou l'email inconnu
-                alert("❌ Identifiants incorrects. Vérifie ton email et ton mot de passe.");
+                // Si ça plante, on affiche le message visuel sur la page et on y reste !
+                errDiv.innerText = "❌ Identifiants incorrects. Vérifie ton email et ton mot de passe.";
+                errDiv.style.display = "block";
             }
         }
     </script>

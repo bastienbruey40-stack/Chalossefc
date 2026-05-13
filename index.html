@@ -18,40 +18,30 @@
 
         .titre-section { text-align: left; font-weight: bold; margin-top: 20px; margin-bottom: 10px; font-size: 1.1em; color: #333; }
         
-        /* NOUVEAU DESIGN : Liste des matchs (Affiches) */
         .match-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 15px; }
-        
-        .match-row { 
-            background: white; border: 2px solid transparent; border-radius: 12px; padding: 15px; 
-            cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-        }
+        .match-row { background: white; border: 2px solid transparent; border-radius: 12px; padding: 15px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         .match-row:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
         .match-row.active { border-color: #007bff; background: #e9f2ff; }
-        
         .match-content { display: flex; justify-content: space-between; align-items: center; }
-        
         .team { display: flex; align-items: center; gap: 10px; flex: 1; }
         .team.right { justify-content: flex-end; text-align: right; }
         .team-name { font-weight: bold; font-size: 0.95em; color: #333; }
-        
         .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: #f0f2f5; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
         .score-divider { font-weight: bold; font-size: 1.5em; color: #adb5bd; padding: 0 10px; }
-        
         .match-date { text-align: center; font-size: 0.85em; color: #6c757d; margin-top: 10px; }
 
-        /* Les cartes des joueurs */
         .card { background: white; padding: 15px 20px; margin: 10px 0; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; text-align: left; }
         .joueur-info { flex-grow: 1; }
         .joueur-info strong { font-size: 1.1em; }
         .joueur-info span { color: #6c757d; font-size: 0.9em; }
-        .btn-noter { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; text-decoration: none; margin-right: 10px; }
+        .btn-noter { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; text-decoration: none; margin-right: 5px; font-size: 0.9em; }
         .btn-supprimer { background: #dc3545; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1.1em; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <div id="info-connexion">Chargement...</div>
+        <div id="info-connexion">Vérification de la connexion...</div>
 
         <h1>⚽ FC Chalosse</h1>
         
@@ -61,13 +51,9 @@
             <a href="ajouter_match.html" id="btn-admin-match" class="btn-vert">➕ Ajouter un match</a>
         </div>
 
-        <!-- ZONE DES MATCHS -->
         <div class="titre-section">📅 Sélectionner un match :</div>
-        <div id="liste-matchs" class="match-list">
-            <p>Chargement des matchs...</p>
-        </div>
+        <div id="liste-matchs" class="match-list"></div>
         
-        <!-- ZONE DE L'EFFECTIF -->
         <div class="titre-section" style="margin-top: 10px;">👕 Effectif à noter :</div>
         <div id="liste-joueurs">
             <p>Sélectionnez un match pour afficher les joueurs.</p>
@@ -96,12 +82,16 @@
         window.matchSelectionne = ""; 
 
         onAuthStateChanged(auth, async (user) => {
-            const infoDiv = document.getElementById('info-connexion');
             if (user) {
+                // L'utilisateur est connecté, on affiche l'interface
+                const infoDiv = document.getElementById('info-connexion');
                 infoDiv.innerHTML = `Connecté en tant que <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Déconnexion 🚪</button>`;
                 
                 document.getElementById('btn-deconnecter').addEventListener('click', () => {
-                    signOut(auth).then(() => window.location.reload());
+                    signOut(auth).then(() => {
+                        // NOUVEAU : On le renvoie sur la connexion une fois déconnecté
+                        window.location.href = "connexion.html"; 
+                    });
                 });
 
                 const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
@@ -110,12 +100,11 @@
                     document.getElementById('btn-admin').style.display = 'inline-block';
                     document.getElementById('btn-admin-match').style.display = 'inline-block';
                 }
+                chargerMatchs(); 
             } else {
-                infoDiv.innerHTML = `Tu n'es pas connecté. <a href="connexion.html" style="color:#007bff; font-weight:bold;">S'inscrire / Se connecter</a>`;
-                estAdmin = false;
+                // NOUVEAU : Si non connecté, on redirige DE SUITE vers la page de connexion
+                window.location.href = "connexion.html";
             }
-            
-            chargerMatchs(); 
         });
 
         async function chargerMatchs() {
@@ -129,23 +118,15 @@
                 let data = doc.data();
                 if (!premierMatchId) premierMatchId = doc.id; 
 
-                // Logo adverse (ou bouclier par défaut)
                 let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo" alt="Logo">` : `<div class="logo">🛡️</div>`;
-                // Logo de Chalosse (j'ai mis un ballon, tu pourras le changer si tu as le lien de l'image de ton club)
                 let logoChalosse = `<div class="logo" style="background:#fff; border:1px solid #ddd;">⚽</div>`;
 
                 html += `
                     <div class="match-row" id="row-${doc.id}" onclick="selectionnerMatch('${doc.id}')">
                         <div class="match-content">
-                            <div class="team">
-                                ${logoChalosse}
-                                <span class="team-name">FC Chalosse</span>
-                            </div>
+                            <div class="team">${logoChalosse}<span class="team-name">FC Chalosse</span></div>
                             <div class="score-divider">-</div>
-                            <div class="team right">
-                                <span class="team-name">${data.adversaire || "Adversaire"}</span>
-                                ${logoAdversaire}
-                            </div>
+                            <div class="team right"><span class="team-name">${data.adversaire || "Adversaire"}</span>${logoAdversaire}</div>
                         </div>
                         <div class="match-date">📅 ${data.date || "Date inconnue"}</div>
                     </div>
@@ -156,28 +137,19 @@
                 conteneurMatchs.innerHTML = "<p>Aucun match trouvé dans la base.</p>";
             } else {
                 conteneurMatchs.innerHTML = html;
-                if (premierMatchId) {
-                    window.selectionnerMatch(premierMatchId);
-                }
+                if (premierMatchId) window.selectionnerMatch(premierMatchId);
             }
         }
 
         window.selectionnerMatch = function(matchId) {
             window.matchSelectionne = matchId;
-            
-            // Retirer la surbrillance de tous les matchs
-            document.querySelectorAll('.match-row').forEach(row => {
-                row.classList.remove('active');
-            });
-            
-            // Mettre en surbrillance le match cliqué
+            document.querySelectorAll('.match-row').forEach(row => row.classList.remove('active'));
             document.getElementById(`row-${matchId}`).classList.add('active');
-
             window.chargerJoueurs();
         }
 
         window.supprimerJoueur = async function(idJoueur, nomJoueur) {
-            if (confirm(`Es-tu sûr de vouloir supprimer ${nomJoueur} de l'effectif ?`)) {
+            if (confirm(`Es-tu sûr de vouloir supprimer ${nomJoueur} ?`)) {
                 await deleteDoc(doc(db, "utilisateurs", idJoueur));
                 window.chargerJoueurs();
             }
@@ -188,27 +160,42 @@
             const matchId = window.matchSelectionne;
 
             if (!matchId) return;
+            conteneur.innerHTML = "<p>Chargement des joueurs...</p>";
 
             const querySnapshot = await getDocs(collection(db, "utilisateurs"));
-            
             let html = "";
-            querySnapshot.forEach((doc) => {
-                let data = doc.data();
+
+            for (const joueurDoc of querySnapshot.docs) {
+                let data = joueurDoc.data();
                 if (data.role === "joueur") {
+                    
+                    let noteAffichee = "";
+                    let texteBouton = "Noter";
+
+                    if (auth.currentUser) {
+                        const noteId = `${matchId}_${joueurDoc.id}_${auth.currentUser.uid}`;
+                        const noteSnap = await getDoc(doc(db, "notes", noteId));
+                        if (noteSnap.exists()) {
+                            noteAffichee = `<span style="color: #28a745; font-weight: bold; margin-right: 10px; font-size: 1.1em;">⭐ ${noteSnap.data().note}</span>`;
+                            texteBouton = "Modifier";
+                        }
+                    }
+
                     html += `
                         <div class="card">
                             <div class="joueur-info">
                                 <strong>${data.prenom} ${data.nom}</strong><br>
                                 <span>${data.poste || "Non renseigné"}</span>
                             </div>
-                            <div style="display: flex; gap: 5px;">
-                                <a href="noter.html?id=${doc.id}&match=${matchId}" class="btn-noter">Noter</a>
-                                ${estAdmin ? `<button onclick="supprimerJoueur('${doc.id}', '${data.prenom}')" class="btn-supprimer" title="Supprimer">🗑️</button>` : ''}
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                ${noteAffichee}
+                                <a href="noter.html?id=${joueurDoc.id}&match=${matchId}" class="btn-noter">${texteBouton}</a>
+                                ${estAdmin ? `<button onclick="supprimerJoueur('${joueurDoc.id}', '${data.prenom}')" class="btn-supprimer" title="Supprimer">🗑️</button>` : ''}
                             </div>
                         </div>
                     `;
                 }
-            });
+            }
 
             if (html === "") {
                 conteneur.innerHTML = "<p>Aucun joueur dans l'effectif pour le moment.</p>";
