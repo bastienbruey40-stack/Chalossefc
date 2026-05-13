@@ -124,7 +124,8 @@
                     date: new Date().toISOString()
                 });
 
-                window.location.href = "index.html"; 
+                
+                window.location.href = `index.html?match=${matchId}`;
             } catch (e) {
                 alert("❌ Erreur lors de l'enregistrement : " + e.message);
             }

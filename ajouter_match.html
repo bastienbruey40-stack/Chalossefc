@@ -7,7 +7,7 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
         .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        input, select { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
         .btn { background: #28a745; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
         .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
     </style>
@@ -17,19 +17,24 @@
     <div class="card">
         <h2>📅 Nouveau Match</h2>
         
-        <label style="text-align: left; display: block;">Nom de l'adversaire :</label>
-        <input type="text" id="adversaire" placeholder="Ex: FC Saint-Paul">
+        <label style="text-align: left; display: block;">Équipe concernée :</label>
+        <select id="equipe_type">
+            <option value="premiere">🔵 Équipe Première</option>
+            <option value="reserve">🟢 Équipe Réserve</option>
+        </select>
+
+        <label style="text-align: left; display: block; margin-top: 10px;">Nom de l'adversaire :</label>
+        <input type="text" id="adversaire" placeholder="Ex: FC Doazit">
         
         <label style="text-align: left; display: block; margin-top: 10px;">Date du match :</label>
-        <!-- Le type="date" affiche un petit calendrier très pratique ! -->
         <input type="date" id="date">
         
-        <label style="text-align: left; display: block; margin-top: 10px;">Lien du logo de l'adversaire (Optionnel) :</label>
-        <input type="url" id="logo" placeholder="https://lien-vers-l-image.png">
+        <label style="text-align: left; display: block; margin-top: 10px;">Lien logo adverse (Optionnel) :</label>
+        <input type="url" id="logo" placeholder="https://...">
         
         <button class="btn" onclick="creerMatch()">Ajouter le match</button>
         <br>
-        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
+        <a href="index.html" class="btn-retour">Annuler</a>
     </div>
 
     <script type="module">
@@ -49,27 +54,24 @@
         const db = getFirestore(app);
 
         window.creerMatch = async function() {
+            const equipeType = document.getElementById('equipe_type').value;
             const adversaireVal = document.getElementById('adversaire').value;
             const dateVal = document.getElementById('date').value;
             const logoVal = document.getElementById('logo').value;
 
-            if(adversaireVal === "" || dateVal === "") {
-                alert("Merci de remplir au moins le nom de l'adversaire et la date !");
-                return;
-            }
+            if(adversaireVal === "" || dateVal === "") return alert("Remplis l'adversaire et la date !");
 
             try {
-                // On ajoute le match dans la collection "matchs"
                 await addDoc(collection(db, "matchs"), {
+                    equipe_type: equipeType, // "premiere" ou "reserve"
                     adversaire: adversaireVal,
                     date: dateVal,
-                    logo: logoVal
+                    logo: logoVal,
+                    compo: [] // On initialise une liste de joueurs vide pour ce match
                 });
-                alert("✅ Match ajouté avec succès !");
-                window.location.href = "index.html"; // Retour à l'accueil pour voir le résultat
-            } catch (e) {
-                alert("❌ Erreur lors de l'ajout : " + e.message);
-            }
+                alert("✅ Match ajouté !");
+                window.location.href = "index.html";
+            } catch (e) { alert("Erreur : " + e.message); }
         }
     </script>
 </body>

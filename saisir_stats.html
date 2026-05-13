@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saisir les Stats - FC Chalosse</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        select { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 1em; }
+        .btn { background: #6f42c1; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
+        
+        .joueur-ligne { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; text-align: left; }
+        .inputs-stats { display: flex; gap: 5px; }
+        .inputs-stats input { width: 45px; text-align: center; padding: 5px; border-radius: 5px; border: 1px solid #ccc; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>📝 Événements du match</h2>
+        <select id="select-match" onchange="chargerJoueursMatch()">
+            <option value="">-- Choisir un match --</option>
+        </select>
+
+        <div id="liste-effectif" style="margin-top: 20px;"></div>
+        
+        <button class="btn" onclick="enregistrerStats()" style="display:none;" id="btn-save">💾 Enregistrer les événements</button>
+        <br>
+        <a href="index.html" class="btn-retour">Annuler</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") chargerMatchs();
+                else window.location.href = "index.html";
+            } else window.location.href = "connexion.html";
+        });
+
+        async function chargerMatchs() {
+            const selectMatch = document.getElementById('select-match');
+            const querySnapshot = await getDocs(collection(db, "matchs"));
+            let options = "<option value=''>-- Choisir un match --</option>";
+            querySnapshot.forEach((doc) => {
+                let d = doc.data();
+                let type = d.equipe_type === "premiere" ? "1ère" : "Rés.";
+                options += `<option value="${doc.id}">[${type}] ${d.adversaire} (${d.date})</option>`;
+            });
+            selectMatch.innerHTML = options;
+        }
+
+        window.chargerJoueursMatch = async function() {
+            const matchId = document.getElementById('select-match').value;
+            const conteneur = document.getElementById('liste-effectif');
+            const btnSave = document.getElementById('btn-save');
+            if (!matchId) { conteneur.innerHTML = ""; btnSave.style.display="none"; return; }
+
+            const matchSnap = await getDoc(doc(db, "matchs", matchId));
+            const matchData = matchSnap.data();
+            const compo = matchData.compo || [];
+            const stats = matchData.stats_joueurs || {};
+
+            if (compo.length === 0) {
+                conteneur.innerHTML = "<p style='color:red;'>Fais d'abord la compo pour ce match !</p>";
+                btnSave.style.display = "none";
+                return;
+            }
+
+            const querySnapshot = await getDocs(collection(db, "utilisateurs"));
+            let html = `
+                <div style="display:flex; justify-content: flex-end; gap: 15px; margin-bottom: 5px; font-size: 0.9em; font-weight: bold;">
+                    <span title="Buts">⚽</span> <span title="Carton Jaune">🟨</span> <span title="Carton Rouge">🟥</span>
+                </div>
+            `;
+
+            querySnapshot.forEach((jDoc) => {
+                if (compo.includes(jDoc.id)) {
+                    // On récupère les valeurs existantes s'il y en a (sinon 0)
+                    let b = stats[jDoc.id]?.buts || 0;
+                    let j = stats[jDoc.id]?.jaunes || 0;
+                    let r = stats[jDoc.id]?.rouges || 0;
+
+                    html += `
+                        <div class="joueur-ligne" data-id="${jDoc.id}">
+                            <span>${jDoc.data().prenom} ${jDoc.data().nom}</span>
+                            <div class="inputs-stats">
+                                <input type="number" min="0" class="in-buts" value="${b}">
+                                <input type="number" min="0" max="2" class="in-jaunes" value="${j}">
+                                <input type="number" min="0" max="1" class="in-rouges" value="${r}">
+                            </div>
+                        </div>`;
+                }
+            });
+            conteneur.innerHTML = html;
+            btnSave.style.display = "block";
+        }
+
+        window.enregistrerStats = async function() {
+            const matchId = document.getElementById('select-match').value;
+            const stats_joueurs = {};
+
+            document.querySelectorAll('.joueur-ligne').forEach(ligne => {
+                const joueurId = ligne.getAttribute('data-id');
+                const b = parseInt(ligne.querySelector('.in-buts').value) || 0;
+                const j = parseInt(ligne.querySelector('.in-jaunes').value) || 0;
+                const r = parseInt(ligne.querySelector('.in-rouges').value) || 0;
+
+                // On n'enregistre que si le joueur a fait quelque chose (pour éviter de surcharger la base de données)
+                if (b > 0 || j > 0 || r > 0) {
+                    stats_joueurs[joueurId] = { buts: b, jaunes: j, rouges: r };
+                }
+            });
+
+            try {
+                await updateDoc(doc(db, "matchs", matchId), { stats_joueurs: stats_joueurs });
+                alert("✅ Statistiques enregistrées !");
+                window.location.href = "stats.html"; // On l'envoie direct voir le résultat !
+            } catch (e) { alert(e.message); }
+        }
+    </script>
+</body>
+</html>

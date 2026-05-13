@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gérer la Composition - FC Chalosse</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; max-width: 600px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        select { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 1em; }
+        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 15px; }
+        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
+        .joueur-ligne { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>📋 Convoquer les joueurs</h2>
+        <select id="select-match" onchange="chargerEffectif()">
+            <option value="">-- Choisir un match --</option>
+        </select>
+
+        <div id="liste-effectif" style="margin-top: 20px;"></div>
+        
+        <button class="btn" onclick="enregistrerCompo()" style="display:none;" id="btn-save">💾 Enregistrer la convocation</button>
+        <br>
+        <a href="index.html" class="btn-retour">Annuler</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") chargerMatchs();
+                else window.location.href = "index.html";
+            } else window.location.href = "connexion.html";
+        });
+
+        async function chargerMatchs() {
+            const selectMatch = document.getElementById('select-match');
+            const querySnapshot = await getDocs(collection(db, "matchs"));
+            let options = "<option value=''>-- Choisir un match --</option>";
+            querySnapshot.forEach((doc) => {
+                let d = doc.data();
+                let type = d.equipe_type === "premiere" ? "1ère" : "Rés.";
+                options += `<option value="${doc.id}">[${type}] ${d.adversaire} (${d.date})</option>`;
+            });
+            selectMatch.innerHTML = options;
+        }
+
+        window.chargerEffectif = async function() {
+            const matchId = document.getElementById('select-match').value;
+            const conteneur = document.getElementById('liste-effectif');
+            const btnSave = document.getElementById('btn-save');
+            if (!matchId) return;
+
+            const matchSnap = await getDoc(doc(db, "matchs", matchId));
+            const compoActuelle = matchSnap.data().compo || [];
+
+            const querySnapshot = await getDocs(collection(db, "utilisateurs"));
+            let html = "";
+            querySnapshot.forEach((joueurDoc) => {
+                if (joueurDoc.data().role === "joueur") {
+                    let coche = compoActuelle.includes(joueurDoc.id) ? "checked" : "";
+                    html += `
+                        <div class="joueur-ligne">
+                            <span>${joueurDoc.data().prenom} ${joueurDoc.data().nom}</span>
+                            <input type="checkbox" class="check-joueur" value="${joueurDoc.id}" ${coche} style="width:20px;">
+                        </div>`;
+                }
+            });
+            conteneur.innerHTML = html;
+            btnSave.style.display = "block";
+        }
+
+        window.enregistrerCompo = async function() {
+            const matchId = document.getElementById('select-match').value;
+            const nouvelleCompo = [];
+            document.querySelectorAll('.check-joueur:checked').forEach(el => nouvelleCompo.push(el.value));
+
+            try {
+                await updateDoc(doc(db, "matchs", matchId), { compo: nouvelleCompo });
+                alert("✅ Convocations enregistrées !");
+                window.location.href = "index.html";
+            } catch (e) { alert(e.message); }
+        }
+    </script>
+</body>
+</html>
