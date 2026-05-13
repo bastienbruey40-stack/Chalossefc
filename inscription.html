@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscription - FC Chalosse</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .btn-retour { display: inline-block; margin-top: 20px; color: #6c757d; text-decoration: none; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>👤 Créer un compte</h2>
+        <p>Inscris-toi pour pouvoir noter les joueurs !</p>
+        
+        <label style="text-align: left; display: block; margin-top: 10px;">Adresse Email :</label>
+        <input type="email" id="email" placeholder="ton.nom@email.com">
+        
+        <label style="text-align: left; display: block; margin-top: 10px;">Mot de passe :</label>
+        <input type="password" id="password" placeholder="6 caractères minimum">
+        
+        <button class="btn" onclick="inscrire()">S'inscrire</button>
+        <br>
+        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        // On importe l'Authentification ici :
+        import { getAuth, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app); // Connexion au système de mots de passe
+        const db = getFirestore(app);
+
+        window.inscrire = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if(email === "" || password.length < 6) {
+                alert("Remplis bien l'email et mets un mot de passe d'au moins 6 caractères.");
+                return;
+            }
+
+            try {
+                // 1. Firebase crée le compte sécurisé (et bloque si l'email existe déjà)
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
+
+                // 2. On l'enregistre dans la base de données avec le rôle "votant"
+                await setDoc(doc(db, "utilisateurs", user.uid), {
+                    email: email,
+                    role: "votant" // C'est un votant, pas un joueur sur le terrain !
+                });
+
+                alert("Compte créé avec succès ! Tu es maintenant connecté.");
+                window.location.href = "index.html";
+
+            } catch (error) {
+                // Firebase a détecté un problème (ex: email déjà utilisé)
+                if(error.code === 'auth/email-already-in-use') {
+                    alert("❌ Cette adresse email est déjà utilisée !");
+                } else if(error.code === 'auth/invalid-email') {
+                    alert("❌ L'adresse email n'est pas valide.");
+                } else {
+                    alert("❌ Erreur : " + error.message);
+                }
+            }
+        }
+    </script>
+</body>
+</html>s

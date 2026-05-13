@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - FC Chalosse</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .btn-retour { display: inline-block; margin-top: 20px; color: #6c757d; text-decoration: none; font-size: 0.9em; }
+        .lien-inscription { display: block; margin-top: 15px; color: #28a745; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🔐 Se connecter</h2>
+        <p>Connecte-toi pour noter les joueurs</p>
+        
+        <label style="text-align: left; display: block; margin-top: 10px;">Adresse Email :</label>
+        <input type="email" id="email" placeholder="ton.nom@email.com">
+        
+        <label style="text-align: left; display: block; margin-top: 10px;">Mot de passe :</label>
+        <input type="password" id="password" placeholder="Ton mot de passe">
+        
+        <button class="btn" onclick="connecter()">Se connecter</button>
+        
+        <a href="inscription.html" class="lien-inscription">Pas encore de compte ? S'inscrire ici</a>
+        <br>
+        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        // On importe la fonction de connexion (signIn) au lieu de l'inscription
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        window.connecter = async function() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if(email === "" || password === "") {
+                alert("Merci de remplir ton email et ton mot de passe.");
+                return;
+            }
+
+            try {
+                // On demande à Firebase de vérifier les identifiants
+                await signInWithEmailAndPassword(auth, email, password);
+                window.location.href = "index.html"; // Redirection vers l'accueil si ça marche
+            } catch (error) {
+                // Si le mot de passe est faux ou l'email inconnu
+                alert("❌ Identifiants incorrects. Vérifie ton email et ton mot de passe.");
+            }
+        }
+    </script>
+</body>
+</html>

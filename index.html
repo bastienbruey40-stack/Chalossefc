@@ -3,66 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FC Chalosse - Notation</title>
+    <title>FC Chalosse</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
         .container { max-width: 600px; margin: auto; }
-        .card { background: white; padding: 20px; margin: 10px 0; border-radius: 12px; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-        .btn { background: #007bff; color: white; border: none; padding: 10px 20px; 
-               border-radius: 8px; cursor: pointer; text-decoration: none; font-weight: bold; }
-        h1 { color: #1a1a1a; }
-        .poste { color: #666; font-size: 0.9em; }
+        h1 { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        
+        /* Style de la barre de connexion en haut */
+        #info-connexion { background: white; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        
+        /* Style des cartes des joueurs */
+        .card { background: white; padding: 15px 20px; margin: 10px 0; border-radius: 12px; 
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; text-align: left; }
+        .joueur-info strong { font-size: 1.1em; }
+        .joueur-info span { color: #6c757d; font-size: 0.9em; }
+        
+        /* Les boutons */
+        .btn-noter { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; text-decoration: none; }
+        .btn-jaune { display:inline-block; background:#ffc107; color:black; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold; margin: 5px; }
+        .btn-vert { display:none; background:#28a745; color:white; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold; margin: 5px; }
+        
+        .btn-deconnexion { 
+            background: #dc3545; 
+            color: white; 
+            border: none; 
+            padding: 6px 12px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 0.9em; 
+            margin-left: 15px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background 0.2s;
+        }
+        .btn-deconnexion:hover {
+            background: #c82333; /* Devient un peu plus foncé quand on passe la souris */
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
+        <!-- Barre de statut de connexion -->
+        <div id="info-connexion">Chargement...</div>
+
         <h1>⚽ FC Chalosse</h1>
-        <a href="classement.html" style="display:inline-block; margin-bottom:15px; background:#ffc107; color:black; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">🏆 Voir le Classement</a>
+        
+        <!-- Boutons d'action -->
+        <div style="margin-bottom: 25px;">
+            <a href="classement.html" class="btn-jaune">🏆 Voir le Classement</a>
+            <!-- Ce bouton est caché par défaut grâce à la classe .btn-vert -->
+            <a href="ajouter.html" id="btn-admin" class="btn-vert">➕ Ajouter un joueur</a>
+        </div>
+
         <p>Sélectionnez un joueur pour le noter</p>
         
+        <!-- La liste des joueurs s'affichera ici -->
         <div id="liste-joueurs">
-            <p>Chargement des joueurs...</p>
+            <p>Chargement de l'effectif...</p>
         </div>
     </div>
 
+    <!-- Script de gestion de la page -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+        // Configuration Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
             projectId: "chalosse-d1ef5",
             storageBucket: "chalosse-d1ef5.firebasestorage.app",
             messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20",
-            measurementId: "G-CDJC1RMEHQ"
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
 
+        // 1. Gérer l'affichage Admin et le statut de connexion
+        onAuthStateChanged(auth, async (user) => {
+            const infoDiv = document.getElementById('info-connexion');
+            if (user) {
+                infoDiv.innerHTML = `Connecté en tant que <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Déconnexion 🚪</button>`;
+                
+                // Activer le bouton de déconnexion
+                document.getElementById('btn-deconnecter').addEventListener('click', () => {
+                    signOut(auth).then(() => window.location.reload());
+                });
+
+                // Vérifier si l'utilisateur est Admin dans la base de données
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") {
+                    document.getElementById('btn-admin').style.display = 'inline-block'; // On affiche le bouton Ajouter
+                }
+            } else {
+                infoDiv.innerHTML = `Tu n'es pas connecté. <a href="connexion.html" style="color:#007bff; font-weight:bold;">S'inscrire / Se connecter</a>`;
+            }
+        });
+
+        // 2. Récupérer et afficher les joueurs
         async function chargerJoueurs() {
-            const querySnapshot = await getDocs(collection(db, "utilisateurs"));
             const conteneur = document.getElementById('liste-joueurs');
-            conteneur.innerHTML = ''; 
-
+            const querySnapshot = await getDocs(collection(db, "utilisateurs"));
+            
+            let html = "";
             querySnapshot.forEach((doc) => {
-                const joueur = doc.data();
-                if(joueur.role === "joueur") {
-                    conteneur.innerHTML += `
+                let data = doc.data();
+                if (data.role === "joueur") {
+                    html += `
                         <div class="card">
-                            <div style="text-align: left;">
-                                <strong>${joueur.prenom} ${joueur.nom}</strong><br>
-                                <span class="poste">${joueur.poste}</span>
+                            <div class="joueur-info">
+                                <strong>${data.prenom} ${data.nom}</strong><br>
+                                <span>${data.poste || "Non renseigné"}</span>
                             </div>
-                            <a href="noter.html?id=${doc.id}" class="btn">Noter</a>
+                            <a href="noter.html?id=${doc.id}" class="btn-noter">Noter</a>
                         </div>
                     `;
                 }
             });
+
+            if (html === "") {
+                conteneur.innerHTML = "<p>Aucun joueur dans l'effectif pour le moment.</p>";
+            } else {
+                conteneur.innerHTML = html;
+            }
         }
 
         chargerJoueurs();
