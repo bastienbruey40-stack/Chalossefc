@@ -2,15 +2,27 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FC Chalosse - Accueil</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>FC Chalosse</title>
+
+    <!-- CONFIGURATION MODE APPLI (PWA) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FC Chalosse">
+    
+    <!-- Icône de l'appli (tu pourras remplacer par ton logo plus tard) -->
+    <link rel="apple-touch-icon" href="https://img.icons8.com/color/512/football.png">
+    <link rel="icon" href="https://img.icons8.com/color/512/football.png">
+
     <style>
         body { 
             font-family: 'Segoe UI', sans-serif; 
             background: #f0f2f5; 
             padding: 20px; 
-            padding-bottom: 80px; /* Espace pour la barre de connexion en bas */
+            padding-bottom: 90px; /* Espace pour la barre de connexion fixée */
             text-align: center; 
+            margin: 0;
         }
         .container { 
             max-width: 600px; 
@@ -29,17 +41,18 @@
             border-radius: 12px;
             border: 2px solid #1a1a1a;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-top: 10px;
             margin-bottom: 30px;
         }
         
-        /* Barre de connexion fixée en bas de l'écran */
+        /* Barre de connexion fixée tout en bas */
         #info-connexion { 
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
             background: #fffce6; 
-            padding: 12px 0; 
+            padding: 15px 0; 
             font-size: 0.85em; 
             border-top: 3px solid #1a1a1a; 
             box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
@@ -110,11 +123,12 @@
             transition: all 0.2s; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
         }
-        .match-row:hover { 
-            transform: translateY(-2px); 
+        .match-row:active { 
+            background: #ffea00; /* Jaune vif au toucher */
         }
         .match-row.active { 
-            background: #ffea00; /* Jaune plus vif quand sélectionné */
+            background: #ffea00; 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .match-content { 
@@ -209,17 +223,17 @@
 
         <div class="titre-section titre-premiere">🔵 Équipe Première</div>
         <div id="matchs-premiere" class="match-list">
-            <p style="color:gray;">Chargement des matchs...</p>
+            <p style="color:gray;">Chargement...</p>
         </div>
 
         <div class="titre-section titre-reserve">🟢 Équipe Réserve</div>
         <div id="matchs-reserve" class="match-list">
-            <p style="color:gray;">Chargement des matchs...</p>
+            <p style="color:gray;">Chargement...</p>
         </div>
         
         <div class="titre-section" style="color: #1a1a1a; border-color: #1a1a1a; margin-top: 30px;">👕 Effectif convoqué</div>
         <div id="liste-joueurs">
-            <p>Sélectionnez un match pour voir les convoqués.</p>
+            <p>Sélectionnez un match.</p>
         </div>
     </div>
 
@@ -250,7 +264,7 @@
         onAuthStateChanged(auth, async (user) => {
             const infoDiv = document.getElementById('info-connexion');
             if (user) {
-                infoDiv.innerHTML = `Connecté : <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Déconnexion</button>`;
+                infoDiv.innerHTML = `Déconnexion : <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Quitter</button>`;
                 
                 document.getElementById('btn-deconnecter').addEventListener('click', () => {
                     signOut(auth).then(() => { window.location.href = "connexion.html"; });
@@ -292,8 +306,8 @@
                 if (d.equipe_type === "premiere") htmlP += matchHtml; else htmlR += matchHtml;
             });
 
-            document.getElementById('matchs-premiere').innerHTML = htmlP || "<p>Pas de match prévu.</p>";
-            document.getElementById('matchs-reserve').innerHTML = htmlR || "<p>Pas de match prévu.</p>";
+            document.getElementById('matchs-premiere').innerHTML = htmlP || "<p>Aucun match.</p>";
+            document.getElementById('matchs-reserve').innerHTML = htmlR || "<p>Aucun match.</p>";
             
             if (matchAForcer) window.selectionnerMatch(matchAForcer);
             else if (premierId) window.selectionnerMatch(premierId);
@@ -307,7 +321,7 @@
         }
 
         window.supprimerJoueur = async function(id, nom) {
-            if (confirm(`Supprimer ${nom} du club ?`)) {
+            if (confirm(`Supprimer ${nom} ?`)) {
                 await deleteDoc(doc(db, "utilisateurs", id));
                 window.chargerJoueurs();
             }
@@ -339,7 +353,7 @@
                         </div>`;
                 }
             }
-            conteneur.innerHTML = html || "<p style='color:gray;'>Aucun joueur convoqué.</p>";
+            conteneur.innerHTML = html || "<p style='color:gray;'>Aucune compo faite.</p>";
         }
     </script>
 </body>
