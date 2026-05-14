@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Effectif - FC Chalosse</title>
+    
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+
     <style>
         body { 
             font-family: 'Segoe UI', sans-serif; 
@@ -18,8 +22,13 @@
             padding-bottom: 30px; 
         }
         
+        /* En-tête Jaune et Noir avec logo */
         h1 { 
-            background: #1a1a1a; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 12px; 
+            background-color: #1a1a1a; 
             color: #ffcc00; 
             padding: 15px; 
             border-radius: 12px; 
@@ -27,8 +36,19 @@
             margin-top: 10px; 
             margin-bottom: 20px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            font-size: 1.6em;
+        }
+
+        .logo-header {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: white;
+            border: 2px solid #ffcc00;
         }
         
+        /* Carte joueur */
         .card { 
             background: #fffce6; 
             border: 2px solid #1a1a1a; 
@@ -37,10 +57,16 @@
             border-radius: 12px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
             display: flex; 
+            justify-content: space-between; /* Permet d'espacer les infos et le bouton */
             align-items: center; 
             text-align: left; 
         }
         
+        .joueur-gauche {
+            display: flex;
+            align-items: center;
+        }
+
         .logo-joueur {
             width: 45px;
             height: 45px;
@@ -58,6 +84,7 @@
         .joueur-info strong { font-size: 1.1em; color: #1a1a1a; }
         .joueur-info span { color: #444; font-size: 0.9em; font-weight: bold; }
         
+        /* Boutons */
         .btn-retour { 
             display: inline-block; 
             margin-top: 20px; 
@@ -69,12 +96,24 @@
             font-weight: bold; 
             border: 2px solid #1a1a1a; 
         }
+
+        .btn-supprimer {
+            background: #dc3545;
+            color: white;
+            border: 2px solid #1a1a1a;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1.1em;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>👕 Effectif du Club</h1>
+        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> Effectif du Club</h1>
         
         <div id="liste-tous-joueurs">
             <p>Chargement de l'effectif...</p>
@@ -85,8 +124,10 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+        // TA CONFIG FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
@@ -98,6 +139,20 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let estAdmin = false;
+
+        // On vérifie qui est connecté pour savoir si on affiche le bouton Supprimer
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") {
+                    estAdmin = true;
+                }
+            }
+            chargerTousLesJoueurs();
+        });
 
         async function chargerTousLesJoueurs() {
             const conteneur = document.getElementById('liste-tous-joueurs');
@@ -108,22 +163,31 @@
 
                 querySnapshot.forEach((doc) => {
                     let data = doc.data();
+                    // On peut aussi afficher les autres utilisateurs, mais ici on se concentre sur les joueurs
                     if (data.role === "joueur") {
-                        listeJoueurs.push(data);
+                        listeJoueurs.push({ id: doc.id, ...data });
                     }
                 });
 
-                // Tri par ordre alphabétique sur le nom de famille
+                // Tri par ordre alphabétique sur le nom
                 listeJoueurs.sort((a, b) => a.nom.localeCompare(b.nom));
 
-                listeJoueurs.forEach(data => {
+                listeJoueurs.forEach(joueur => {
+                    // Le bouton de suppression n'apparaît que si l'utilisateur connecté est admin
+                    let boutonSupprimer = estAdmin 
+                        ? `<button onclick="supprimerJoueur('${joueur.id}', '${joueur.prenom} ${joueur.nom}')" class="btn-supprimer" title="Supprimer ce joueur">🗑️</button>` 
+                        : '';
+
                     html += `
                         <div class="card">
-                            <div class="logo-joueur">👤</div>
-                            <div class="joueur-info">
-                                <strong>${data.prenom} ${data.nom.toUpperCase()}</strong><br>
-                                <span>${data.poste || "Poste non renseigné"}</span>
+                            <div class="joueur-gauche">
+                                <div class="logo-joueur">👤</div>
+                                <div class="joueur-info">
+                                    <strong>${joueur.prenom} ${joueur.nom.toUpperCase()}</strong><br>
+                                    <span>${joueur.poste || "Poste non renseigné"}</span>
+                                </div>
                             </div>
+                            ${boutonSupprimer}
                         </div>
                     `;
                 });
@@ -135,7 +199,18 @@
             }
         }
 
-        chargerTousLesJoueurs();
+        // Fonction pour supprimer le joueur de la base de données
+        window.supprimerJoueur = async function(idJoueur, nomJoueur) {
+            if (confirm(`⚠️ ATTENTION ⚠️\nVoulez-vous vraiment supprimer définitivement ${nomJoueur} du club ?\nCette action supprimera également le joueur des statistiques.`)) {
+                try {
+                    await deleteDoc(doc(db, "utilisateurs", idJoueur));
+                    alert(`✅ ${nomJoueur} a été supprimé avec succès.`);
+                    chargerTousLesJoueurs(); // On recharge la liste instantanément
+                } catch (error) {
+                    alert("Erreur lors de la suppression : " + error.message);
+                }
+            }
+        };
     </script>
 </body>
 </html>

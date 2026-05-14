@@ -2,43 +2,111 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Connexion - FC Chalosse</title>
+    
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
-        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .lien-inscription { display: block; margin-top: 15px; color: #28a745; text-decoration: none; font-weight: bold; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #f0f2f5; 
+            padding: 20px; 
+            text-align: center; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 90vh; 
+            margin: 0; 
+        }
         
-        /* Design du message d'erreur qui s'affichera au besoin */
-        #msg-erreur { display: none; background: #dc3545; color: white; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 0.9em; text-align: left;}
+        .card { 
+            background: #fffce6; 
+            padding: 30px; 
+            border-radius: 12px; 
+            width: 100%; 
+            max-width: 400px; 
+            border: 2px solid #1a1a1a; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
+        }
+        
+        h1 { 
+            margin-top: 0; 
+            color: #1a1a1a; 
+            font-size: 1.8em; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 10px; 
+        }
+        
+        .logo-header { 
+            width: 45px; 
+            height: 45px; 
+            border-radius: 50%; 
+            object-fit: cover; 
+            border: 2px solid #ffcc00; 
+        }
+        
+        input { 
+            width: 90%; 
+            padding: 12px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            border: 2px solid #1a1a1a; 
+            font-size: 1em; 
+        }
+        
+        .btn { 
+            background: #ffcc00; 
+            color: #1a1a1a; 
+            border: 2px solid #1a1a1a; 
+            padding: 15px; 
+            width: 100%; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            font-size: 1.1em; 
+            margin-top: 15px; 
+        }
+        .btn:hover { 
+            background: #ffea00; 
+        }
+        
+        .lien { 
+            display: block; 
+            margin-top: 20px; 
+            color: #1a1a1a; 
+            text-decoration: none; 
+            font-weight: bold; 
+        }
+        .lien:hover { 
+            text-decoration: underline; 
+        }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2>🔐 Se connecter</h2>
-        <p>Connecte-toi pour noter les joueurs</p>
-        
-        <!-- C'est ici que l'erreur s'affichera -->
-        <div id="msg-erreur"></div>
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Adresse Email :</label>
-        <input type="email" id="email" placeholder="ton.nom@email.com">
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Mot de passe :</label>
-        <input type="password" id="password" placeholder="Ton mot de passe">
-        
-        <button class="btn" onclick="connecter()">Se connecter</button>
-        
-        <a href="inscription.html" class="lien-inscription">Pas encore de compte ? S'inscrire ici</a>
+        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> Connexion</h1>
+        <p style="color: #444; font-size: 0.9em; margin-bottom: 20px;">Accédez à votre espace joueur/admin.</p>
+
+        <!-- Formulaire de connexion -->
+        <input type="email" id="in-email" placeholder="Adresse Email" required>
+        <input type="password" id="in-password" placeholder="Mot de passe" required>
+
+        <button class="btn" id="btn-connecter">Se connecter</button>
+
+        <a href="inscription.html" class="lien">Pas encore de compte ? S'inscrire</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+        // TA CONFIG FIREBASE
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
@@ -51,36 +119,32 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
 
-        // Si l'utilisateur est DEJA connecté, on le renvoie direct à l'accueil
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                window.location.href = "index.html";
-            }
-        });
+        document.getElementById('btn-connecter').addEventListener('click', async () => {
+            const email = document.getElementById('in-email').value.trim();
+            const password = document.getElementById('in-password').value;
 
-        window.connecter = async function() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const errDiv = document.getElementById('msg-erreur');
-            
-            // On cache l'erreur à chaque nouvelle tentative
-            errDiv.style.display = "none";
-
-            if(email === "" || password === "") {
-                errDiv.innerText = "⚠️ Merci de remplir ton email et ton mot de passe.";
-                errDiv.style.display = "block";
+            if (!email || !password) {
+                alert("Veuillez remplir tous les champs !");
                 return;
             }
 
             try {
-                // Tentative de connexion (si ça marche, le onAuthStateChanged au dessus va s'activer et te rediriger tout seul !)
+                // Tente de connecter l'utilisateur avec Firebase
                 await signInWithEmailAndPassword(auth, email, password);
+                // Si ça marche, redirection immédiate vers l'accueil
+                window.location.href = "index.html";
             } catch (error) {
-                // Si ça plante, on affiche le message visuel sur la page et on y reste !
-                errDiv.innerText = "❌ Identifiants incorrects. Vérifie ton email et ton mot de passe.";
-                errDiv.style.display = "block";
+                console.error("Erreur de connexion:", error);
+                // Gestion des messages d'erreur en français
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+                    alert("Email ou mot de passe incorrect.");
+                } else if (error.code === 'auth/invalid-email') {
+                    alert("L'adresse email n'est pas valide.");
+                } else {
+                    alert("Erreur lors de la connexion : " + error.message);
+                }
             }
-        }
+        });
     </script>
 </body>
 </html>

@@ -92,6 +92,7 @@
             <a href="ajouter_match.html" id="btn-admin-match" class="btn-vert">➕ Match</a>
             <a href="gerer_compo.html" id="btn-admin-compo" class="btn-vert" style="background: #17a2b8;">📋 Compos</a>
             <a href="saisir_stats.html" id="btn-admin-stats" class="btn-vert" style="background: #6f42c1;">📝 Saisir Stats</a>
+            <a href="gerer_comptes.html" id="btn-admin-comptes" class="btn-vert" style="background: #dc3545;">⚙️ Comptes</a>
         </div>
 
         <div class="titre-section titre-premiere">🔵 Équipe Première</div>
@@ -134,6 +135,8 @@
                     document.getElementById('btn-admin-match').style.display = 'inline-block';
                     document.getElementById('btn-admin-compo').style.display = 'inline-block';
                     document.getElementById('btn-admin-stats').style.display = 'inline-block';
+                    // Dans ton fichier index.html :
+                    document.getElementById('btn-admin-comptes').style.display = 'inline-block';
                 }
                 chargerMatchs(); 
             } else {

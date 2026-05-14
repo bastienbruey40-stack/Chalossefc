@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gestion des Comptes - FC Chalosse</title>
+    
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; margin: 0; }
+        .container { max-width: 600px; margin: auto; padding-bottom: 30px; }
+        
+        h1 { 
+            display: flex; align-items: center; justify-content: center; gap: 12px; 
+            background-color: #1a1a1a; color: #ffcc00; padding: 15px; 
+            border-radius: 12px; border: 2px solid #1a1a1a; margin-top: 10px; margin-bottom: 20px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); font-size: 1.5em;
+        }
+
+        .card { 
+            background: #fffce6; border: 2px solid #1a1a1a; padding: 15px; 
+            margin: 10px 0; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            display: flex; justify-content: space-between; align-items: center; text-align: left; 
+        }
+        
+        .user-info strong { font-size: 1.1em; color: #1a1a1a; }
+        .user-info span { color: #444; font-size: 0.85em; font-weight: bold; }
+        .user-email { color: #666; font-size: 0.8em; margin-top: 2px; display: block; font-style: italic; }
+        
+        .badge-role { 
+            display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.75em; 
+            color: white; margin-top: 5px; font-weight: bold; border: 1px solid #1a1a1a;
+        }
+        .role-admin { background-color: #dc3545; }
+        .role-utilisateur { background-color: #17a2b8; }
+        
+        .btn-retour { 
+            display: inline-block; margin-top: 20px; background: #1a1a1a; color: #ffcc00; 
+            padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 2px solid #1a1a1a; 
+        }
+        .btn-supprimer {
+            background: #dc3545; color: white; border: 2px solid #1a1a1a; padding: 8px 12px; 
+            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1.1em; 
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>⚙️ Comptes Utilisateurs</h1>
+        <p style="font-size: 0.9em; color: #444; margin-bottom: 20px;">
+            Ici, vous gérez uniquement les personnes inscrites sur l'application (les joueurs sportifs se gèrent dans "Effectif").
+        </p>
+        
+        <div id="liste-comptes">
+            <p>Chargement des utilisateurs...</p>
+        </div>
+        
+        <a href="index.html" class="btn-retour">🔙 Retour à l'accueil</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, deleteDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // TA CONFIG FIREBASE
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Bloquer l'accès aux non-admins
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") {
+                    chargerTousLesComptes(user.uid);
+                } else {
+                    alert("Accès refusé. Réservé aux administrateurs.");
+                    window.location.href = "index.html";
+                }
+            } else {
+                window.location.href = "connexion.html";
+            }
+        });
+
+        async function chargerTousLesComptes(monUid) {
+            const conteneur = document.getElementById('liste-comptes');
+            try {
+                const querySnapshot = await getDocs(collection(db, "utilisateurs"));
+                let html = "";
+
+                querySnapshot.forEach((docSnap) => {
+                    let data = docSnap.data();
+                    let uid = docSnap.id;
+                    
+                    // ON EXCLUT LES JOUEURS (ajoutés manuellement pour le foot)
+                    if (data.role === "joueur") {
+                        return; // On passe au suivant sans l'afficher
+                    }
+
+                    let roleClasse = data.role === "admin" ? "role-admin" : "role-utilisateur";
+                    let roleTexte = data.role === "admin" ? "ADMIN" : "UTILISATEUR";
+                    let emailText = data.email ? `<span class="user-email">✉️ ${data.email}</span>` : "";
+
+                    // On ne peut pas se supprimer soi-même
+                    let btnSupprimer = "";
+                    if (uid !== monUid) {
+                        btnSupprimer = `<button onclick="supprimerCompte('${uid}', '${data.prenom || 'Ce compte'}')" class="btn-supprimer" title="Supprimer ce compte">🗑️</button>`;
+                    } else {
+                        btnSupprimer = `<span style="font-size:0.8em; color:gray; font-weight:bold;">Moi</span>`;
+                    }
+
+                    html += `
+                        <div class="card">
+                            <div class="user-info">
+                                <strong>${data.prenom || "Compte"} ${data.nom || "Incomplet"}</strong>
+                                ${emailText}
+                                <span class="badge-role ${roleClasse}">${roleTexte}</span>
+                            </div>
+                            <div>
+                                ${btnSupprimer}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                conteneur.innerHTML = html || "<p>Aucun compte utilisateur trouvé.</p>";
+            } catch (error) {
+                console.error("Erreur:", error);
+                conteneur.innerHTML = "<p style='color:red;'>Erreur lors du chargement.</p>";
+            }
+        }
+
+        // Fonction de suppression de l'utilisateur
+        window.supprimerCompte = async function(idUser, nomUser) {
+            if (confirm(`⚠️ Voulez-vous vraiment supprimer définitivement le compte de l'application de ${nomUser} ?`)) {
+                try {
+                    await deleteDoc(doc(db, "utilisateurs", idUser));
+                    alert(`✅ Le compte a été supprimé.`);
+                    chargerTousLesComptes(auth.currentUser.uid); // Rafraîchit la liste
+                } catch (error) {
+                    alert("Erreur lors de la suppression : " + error.message);
+                }
+            }
+        };
+    </script>
+</body>
+</html>
