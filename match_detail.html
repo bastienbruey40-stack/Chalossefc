@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Détails du Match - FC Chalosse</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #f0f2f5; 
+            padding: 20px; 
+            text-align: center; 
+        }
+        .container { max-width: 600px; margin: auto; }
+        
+        h2 { 
+            background-color: #1a1a1a; 
+            color: #ffcc00; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border: 2px solid #1a1a1a;
+            margin-bottom: 20px;
+        }
+
+        .card { 
+            background: #fffce6; 
+            border: 2px solid #1a1a1a; 
+            padding: 15px 20px; 
+            margin: 10px 0; 
+            border-radius: 12px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            text-align: left; 
+        }
+
+        .btn-noter { 
+            background: #007bff; 
+            color: white; 
+            padding: 10px 15px; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            font-weight: bold; 
+            font-size: 0.9em; 
+        }
+
+        .btn-retour { 
+            display: inline-block; 
+            margin-top: 20px; 
+            background: #6c757d; 
+            color: white; 
+            padding: 12px 20px; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2 id="titre-match">Chargement du match...</h2>
+        
+        <div id="liste-joueurs">
+            <p>Chargement de l'effectif...</p>
+        </div>
+
+        <a href="index.html" class="btn-retour">🔙 Retour aux matchs</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const matchId = urlParams.get('match');
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                chargerDetails();
+            } else {
+                window.location.href = "connexion.html";
+            }
+        });
+
+        async function chargerDetails() {
+            if (!matchId) return;
+
+            const matchSnap = await getDoc(doc(db, "matchs", matchId));
+            if (matchSnap.exists()) {
+                const d = matchSnap.data();
+                document.getElementById('titre-match').innerText = `VS ${d.adversaire}`;
+                const compo = d.compo || [];
+
+                const querySnapshot = await getDocs(collection(db, "utilisateurs"));
+                let html = "";
+
+                for (const jDoc of querySnapshot.docs) {
+                    let data = jDoc.data();
+                    if (data.role === "joueur" && compo.includes(jDoc.id)) {
+                        const nId = `${matchId}_${jDoc.id}_${auth.currentUser.uid}`;
+                        const nSnap = await getDoc(doc(db, "notes", nId));
+                        let noteTxt = nSnap.exists() ? `<span style="color:#1a1a1a; font-weight:bold; margin-right:10px;">⭐ ${nSnap.data().note}</span>` : "";
+                        
+                        html += `
+                            <div class="card">
+                                <div><strong>${data.prenom} ${data.nom}</strong><br><small>${data.poste || ""}</small></div>
+                                <div style="display:flex; align-items:center;">
+                                    ${noteTxt}
+                                    <a href="noter.html?id=${jDoc.id}&match=${matchId}" class="btn-noter">${nSnap.exists() ? "Modifier" : "Noter"}</a>
+                                </div>
+                            </div>`;
+                    }
+                }
+                document.getElementById('liste-joueurs').innerHTML = html || "<p>Aucun joueur convoqué.</p>";
+            }
+        }
+    </script>
+</body>
+</html>

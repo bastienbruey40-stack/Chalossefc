@@ -2,43 +2,105 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Statistiques - FC Chalosse</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .container { max-width: 700px; margin: auto; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow-x: auto; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #f0f2f5; 
+            padding: 20px; 
+            text-align: center; 
+            margin: 0;
+        }
+        .container { 
+            max-width: 850px; 
+            margin: auto; 
+            padding-bottom: 30px; 
+        }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { padding: 12px 10px; border-bottom: 1px solid #ddd; text-align: center; }
-        th { background-color: #f8f9fa; font-weight: bold; color: #333; }
-        td.nom-joueur { text-align: left; font-weight: bold; }
+        h1 { 
+            background: #1a1a1a; 
+            color: #ffcc00; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border: 2px solid #1a1a1a; 
+            margin-top: 10px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+        }
         
-        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+        .card { 
+            background: #fffce6; 
+            padding: 15px; 
+            border-radius: 12px; 
+            border: 2px solid #1a1a1a; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
+            overflow-x: auto; /* Permet de scroller le tableau sur mobile si besoin */
+        }
+        
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            background: white; 
+            min-width: 500px; 
+        }
+        
+        th, td { 
+            padding: 12px 8px; 
+            border: 1px solid #1a1a1a; 
+            text-align: center; 
+            font-size: 0.95em; 
+        }
+        
+        th { 
+            background-color: #1a1a1a; 
+            color: #ffcc00; 
+            font-weight: bold; 
+        }
+        
+        .nom-joueur { 
+            text-align: left; 
+            font-weight: bold; 
+            background: #fffce6; 
+        }
+        
+        .btn-retour { 
+            display: inline-block; 
+            margin-top: 20px; 
+            background: #1a1a1a; 
+            color: #ffcc00; 
+            padding: 10px 20px; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            font-weight: bold; 
+            border: 2px solid #1a1a1a; 
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>📊 Statistiques de la Saison</h1>
-
+        <h1>📊 Statistiques Saison</h1>
+        
         <div class="card">
-            <table id="table-stats">
+            <table>
                 <thead>
                     <tr>
                         <th style="text-align: left;">Joueur</th>
-                        <th title="Matchs Joués">MJ</th>
-                        <th title="Buts">⚽</th>
-                        <th title="Cartons Jaunes">🟨</th>
-                        <th title="Cartons Rouges">🟥</th>
+                        <th>MJ</th>
+                        <th>⚽</th>
+                        <th>🎯</th>
+                        <th>⭐ Moy.</th>
+                        <th>🟨</th>
+                        <th>🟥</th>
                     </tr>
                 </thead>
                 <tbody id="corps-table">
-                    <tr><td colspan="5">Calcul des statistiques en cours...</td></tr>
+                    <tr><td colspan="7">Calcul en cours...</td></tr>
                 </tbody>
             </table>
         </div>
-
+        
         <a href="index.html" class="btn-retour">🔙 Retour à l'accueil</a>
     </div>
 
@@ -46,6 +108,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // Configuration Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
@@ -59,69 +122,92 @@
         const db = getFirestore(app);
 
         async function calculerStats() {
-            // 1. Récupérer tous les joueurs
-            const joueursRef = await getDocs(collection(db, "utilisateurs"));
-            let statsGlobales = {};
-
-            joueursRef.forEach(doc => {
-                let data = doc.data();
-                if (data.role === "joueur") {
-                    statsGlobales[doc.id] = {
-                        nomComplet: `${data.prenom} ${data.nom}`,
-                        matchsJoues: 0,
-                        buts: 0,
-                        jaunes: 0,
-                        rouges: 0
-                    };
-                }
-            });
-
-            // 2. Récupérer tous les matchs pour additionner
-            const matchsRef = await getDocs(collection(db, "matchs"));
-            
-            matchsRef.forEach(doc => {
-                let matchData = doc.data();
-                let compo = matchData.compo || [];
-                let statsMatch = matchData.stats_joueurs || {};
-
-                // Ajouter +1 Match Joué pour chaque joueur dans la compo
-                compo.forEach(idJoueur => {
-                    if (statsGlobales[idJoueur]) {
-                        statsGlobales[idJoueur].matchsJoues += 1;
+            try {
+                // 1. Charger tous les joueurs pour créer la base du tableau
+                const joueursRef = await getDocs(collection(db, "utilisateurs"));
+                let statsGlobales = {};
+                
+                joueursRef.forEach(doc => {
+                    let data = doc.data();
+                    if (data.role === "joueur") {
+                        statsGlobales[doc.id] = { 
+                            nom: `${data.prenom} ${data.nom}`, 
+                            mj: 0, buts: 0, passes: 0, jaunes: 0, rouges: 0, 
+                            totalNotes: 0, nbVotes: 0 
+                        };
                     }
                 });
 
-                // Additionner les buts et les cartons
-                for (let idJoueur in statsMatch) {
-                    if (statsGlobales[idJoueur]) {
-                        statsGlobales[idJoueur].buts += (statsMatch[idJoueur].buts || 0);
-                        statsGlobales[idJoueur].jaunes += (statsMatch[idJoueur].jaunes || 0);
-                        statsGlobales[idJoueur].rouges += (statsMatch[idJoueur].rouges || 0);
+                // 2. Charger les matchs pour compter les Matchs Joués (MJ), Buts, Passes et Cartons
+                const matchsRef = await getDocs(collection(db, "matchs"));
+                matchsRef.forEach(doc => {
+                    let d = doc.data();
+                    let compo = d.compo || [];
+                    let sMatch = d.stats_joueurs || {};
+
+                    // Ajout +1 aux Matchs Joués (MJ) pour les joueurs dans la compo
+                    compo.forEach(id => { 
+                        if(statsGlobales[id]) {
+                            statsGlobales[id].mj++; 
+                        }
+                    });
+
+                    // Addition des Buts, Passes, Cartons (avec parseInt pour forcer le format nombre)
+                    for (let id in sMatch) {
+                        if (statsGlobales[id]) {
+                            statsGlobales[id].buts += (parseInt(sMatch[id].buts) || 0);
+                            statsGlobales[id].passes += (parseInt(sMatch[id].passes) || 0);
+                            statsGlobales[id].jaunes += (parseInt(sMatch[id].jaunes) || 0);
+                            statsGlobales[id].rouges += (parseInt(sMatch[id].rouges) || 0);
+                        }
                     }
+                });
+
+                // 3. Charger les notes pour calculer la Moyenne (⭐ Moy.)
+                const notesRef = await getDocs(collection(db, "notes"));
+                notesRef.forEach(doc => {
+                    let n = doc.data();
+                    // Récupération de l'ID du joueur, sécurisée si la structure a changé
+                    let joueurId = n.joueurId || doc.id.split('_')[1];
+
+                    if (statsGlobales[joueurId]) {
+                        statsGlobales[joueurId].totalNotes += parseFloat(n.note);
+                        statsGlobales[joueurId].nbVotes++;
+                    }
+                });
+
+                // 4. Génération de l'affichage HTML et tri par Buts puis par MJ
+                let liste = Object.values(statsGlobales).sort((a, b) => b.buts - a.buts || b.mj - a.mj);
+                let html = "";
+                
+                liste.forEach(s => {
+                    let moyenne = s.nbVotes > 0 ? (s.totalNotes / s.nbVotes).toFixed(1) : "-";
+                    html += `
+                        <tr>
+                            <td class="nom-joueur">${s.nom}</td>
+                            <td>${s.mj}</td>
+                            <td style="color:#28a745; font-weight:bold; font-size:1.1em;">${s.buts}</td>
+                            <td style="color:#17a2b8; font-weight:bold; font-size:1.1em;">${s.passes}</td>
+                            <td style="font-weight:bold;">${moyenne}</td>
+                            <td style="color:#d39e00; font-weight:bold; font-size:1.1em;">${s.jaunes}</td>
+                            <td style="color:#dc3545; font-weight:bold; font-size:1.1em;">${s.rouges}</td>
+                        </tr>`;
+                });
+
+                const corps = document.getElementById('corps-table');
+                if (html === "") {
+                    corps.innerHTML = "<tr><td colspan='7'>Aucun joueur dans la base de données.</td></tr>";
+                } else {
+                    corps.innerHTML = html;
                 }
-            });
 
-            // 3. Convertir en tableau et trier (par Buts, puis par Matchs Joués)
-            let listeStats = Object.values(statsGlobales);
-            listeStats.sort((a, b) => b.buts - a.buts || b.matchsJoues - a.matchsJoues);
-
-            // 4. Afficher le tableau
-            let html = "";
-            listeStats.forEach(stat => {
-                html += `
-                    <tr>
-                        <td class="nom-joueur">${stat.nomComplet}</td>
-                        <td><b>${stat.matchsJoues}</b></td>
-                        <td style="color: #28a745; font-weight: bold;">${stat.buts}</td>
-                        <td style="color: #d39e00; font-weight: bold;">${stat.jaunes}</td>
-                        <td style="color: #dc3545; font-weight: bold;">${stat.rouges}</td>
-                    </tr>
-                `;
-            });
-
-            document.getElementById('corps-table').innerHTML = html || "<tr><td colspan='5'>Aucune stat disponible.</td></tr>";
+            } catch (error) {
+                console.error("Erreur lors du calcul des statistiques :", error);
+                document.getElementById('corps-table').innerHTML = "<tr><td colspan='7' style='color:red; font-weight:bold;'>Erreur de chargement des statistiques.</td></tr>";
+            }
         }
 
+        // Lancement de la fonction
         calculerStats();
     </script>
 </body>

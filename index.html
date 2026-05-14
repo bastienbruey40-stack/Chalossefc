@@ -3,38 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>FC Chalosse</title>
+    <title>FC Chalosse - Accueil</title>
 
-    <!-- CONFIGURATION MODE APPLI (PWA) -->
+    <!-- CONFIGURATION MODE APPLI (PWA) AVEC TON LOGO -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="FC Chalosse">
     
-    <!-- Icône de l'appli (tu pourras remplacer par ton logo plus tard) -->
-    <link rel="apple-touch-icon" href="https://img.icons8.com/color/512/football.png">
-    <link rel="icon" href="https://img.icons8.com/color/512/football.png">
+    <!-- Icône de l'appli sur le téléphone -->
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
 
     <style>
         body { 
             font-family: 'Segoe UI', sans-serif; 
             background: #f0f2f5; 
             padding: 20px; 
-            padding-bottom: 90px; /* Espace pour la barre de connexion fixée */
+            padding-bottom: 90px; 
             text-align: center; 
             margin: 0;
         }
-        .container { 
-            max-width: 600px; 
-            margin: auto; 
-        }
+        .container { max-width: 600px; margin: auto; }
         
-        /* En-tête du club - Style Jaune et Noir */
+        /* En-tête Jaune et Noir */
         h1 { 
             display: flex; 
             align-items: center; 
             justify-content: center; 
-            gap: 10px; 
+            gap: 12px; 
             background-color: #1a1a1a; 
             color: #ffcc00; 
             padding: 15px;
@@ -43,176 +40,52 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             margin-top: 10px;
             margin-bottom: 30px;
+            font-size: 1.6em;
         }
         
-        /* Barre de connexion fixée tout en bas */
-        #info-connexion { 
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            background: #fffce6; 
-            padding: 15px 0; 
-            font-size: 0.85em; 
-            border-top: 3px solid #1a1a1a; 
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-            z-index: 1000;
-        }
-        
-        /* Boutons de navigation (couleurs d'origine conservées) */
-        .btn-jaune { 
-            display: inline-block; 
-            background: #ffc107; 
-            color: black; 
-            padding: 10px 20px; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            font-weight: bold; 
-            margin: 5px; 
-            font-size: 0.9em;
-        }
-        .btn-vert { 
-            display: none; 
-            background: #28a745; 
-            color: white; 
-            padding: 10px 20px; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            font-weight: bold; 
-            margin: 5px; 
-            font-size: 0.9em;
-        }
-        .btn-deconnexion { 
-            background: #dc3545; 
-            color: white; 
-            border: none; 
-            padding: 5px 10px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            font-size: 0.8em; 
-            margin-left: 15px; 
+        /* Logo dans le header */
+        .logo-header {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: white;
+            border: 2px solid #ffcc00;
         }
 
-        /* Titres des sections Calendrier */
-        .titre-section { 
-            text-align: left; 
-            font-weight: bold; 
-            font-size: 1.1em; 
-            border-bottom: 3px solid; 
-            padding-bottom: 5px; 
-            margin-top: 25px; 
-            margin-bottom: 15px; 
-        }
+        #info-connexion { position: fixed; bottom: 0; left: 0; width: 100%; background: #fffce6; padding: 15px 0; font-size: 0.85em; border-top: 3px solid #1a1a1a; z-index: 1000; }
+        
+        .btn-jaune { display: inline-block; background: #ffc107; color: black; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 5px; font-size: 0.9em; border: 2px solid #1a1a1a; }
+        .btn-vert { display: none; background: #28a745; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 5px; font-size: 0.9em; border: 2px solid #1a1a1a; }
+        .btn-deconnexion { background: #dc3545; color: white; border: 2px solid #1a1a1a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.8em; margin-left: 15px; }
+
+        .titre-section { text-align: left; font-weight: bold; font-size: 1.1em; border-bottom: 3px solid; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; }
         .titre-premiere { color: #1a1a1a; border-color: #1a1a1a; }
         .titre-reserve { color: #b38f00; border-color: #ffcc00; }
         
-        /* Liste des matchs - Fond jaune clair et contour noir */
-        .match-list { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 10px; 
-            padding-bottom: 15px; 
-        }
-        .match-row { 
-            background: #fffce6; 
-            border: 2px solid #1a1a1a; 
-            border-radius: 12px; 
-            padding: 15px; 
-            cursor: pointer; 
-            transition: all 0.2s; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
-        }
-        .match-row:active { 
-            background: #ffea00; /* Jaune vif au toucher */
-        }
-        .match-row.active { 
-            background: #ffea00; 
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        }
+        .match-list { display: flex; flex-direction: column; gap: 12px; }
+        .match-row { background: #fffce6; border: 2px solid #1a1a1a; border-radius: 12px; padding: 15px; cursor: pointer; text-decoration: none; color: inherit; display: block; transition: transform 0.1s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .match-row:active { transform: scale(0.98); background: #ffea00; }
         
-        .match-content { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-        }
-        .team { 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-            flex: 1; 
-        }
+        .match-content { display: flex; justify-content: space-between; align-items: center; }
+        .team { display: flex; align-items: center; gap: 10px; flex: 1; }
         .team.right { justify-content: flex-end; text-align: right; }
         .team-name { font-weight: bold; font-size: 0.95em; color: #1a1a1a; }
         
-        .logo { 
-            width: 40px; 
-            height: 40px; 
-            object-fit: contain; 
-            border-radius: 50%; 
-            background: white; 
-            border: 2px solid #1a1a1a;
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            font-size: 20px; 
-            flex-shrink: 0; 
-        }
-        .match-date { 
-            text-align: center; 
-            font-size: 0.8em; 
-            color: #1a1a1a; 
-            font-weight: bold;
-            margin-top: 8px; 
-        }
-
-        /* Cartes des joueurs */
-        .card { 
-            background: #fffce6; 
-            border: 2px solid #1a1a1a; 
-            padding: 15px 20px; 
-            margin: 10px 0; 
-            border-radius: 12px; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            text-align: left; 
-        }
-        .joueur-info strong { font-size: 1.1em; color: #1a1a1a; }
-        .joueur-info span { color: #444; font-size: 0.9em; font-weight: bold; }
-        
-        .btn-noter { 
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            padding: 10px 15px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            text-decoration: none; 
-            font-size: 0.9em; 
-        }
-        .btn-supprimer { 
-            background: #dc3545; 
-            color: white; 
-            border: none; 
-            padding: 10px 15px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-weight: bold; 
-            margin-left: 5px;
-        }
+        /* Logos dans la liste des matchs */
+        .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: white; border: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .match-date { text-align: center; font-size: 0.8em; color: #1a1a1a; font-weight: bold; margin-top: 8px; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>⚽ FC Chalosse</h1>
+        <!-- LE LOGO EST INTEGRE ICI DANS LE TITRE -->
+        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> FC Chalosse</h1>
         
-        <!-- Navigation -->
+        <!-- Navigation Principale -->
         <div style="margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: center;">
-            <a href="classement.html" class="btn-jaune">🏆 Classement</a>
+            <a href="effectif.html" class="btn-jaune">👕 Effectif</a>
             <a href="stats.html" class="btn-jaune" style="background: #e2e3e5; color: black;">📊 Stats Saison</a>
             
             <a href="ajouter.html" id="btn-admin" class="btn-vert">➕ Joueur</a>
@@ -222,29 +95,20 @@
         </div>
 
         <div class="titre-section titre-premiere">🔵 Équipe Première</div>
-        <div id="matchs-premiere" class="match-list">
-            <p style="color:gray;">Chargement...</p>
-        </div>
+        <div id="matchs-premiere" class="match-list"><p style="color:gray;">Chargement des matchs...</p></div>
 
         <div class="titre-section titre-reserve">🟢 Équipe Réserve</div>
-        <div id="matchs-reserve" class="match-list">
-            <p style="color:gray;">Chargement...</p>
-        </div>
-        
-        <div class="titre-section" style="color: #1a1a1a; border-color: #1a1a1a; margin-top: 30px;">👕 Effectif convoqué</div>
-        <div id="liste-joueurs">
-            <p>Sélectionnez un match.</p>
-        </div>
+        <div id="matchs-reserve" class="match-list"><p style="color:gray;">Chargement des matchs...</p></div>
     </div>
 
-    <!-- Barre de connexion fixée en bas -->
     <div id="info-connexion">Vérification de la connexion...</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+        // REMETTRE TA CONFIG ICI
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
             authDomain: "chalosse-d1ef5.firebaseapp.com",
@@ -258,21 +122,14 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        let estAdmin = false; 
-        window.matchSelectionne = ""; 
-
         onAuthStateChanged(auth, async (user) => {
             const infoDiv = document.getElementById('info-connexion');
             if (user) {
-                infoDiv.innerHTML = `Déconnexion : <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Quitter</button>`;
-                
-                document.getElementById('btn-deconnecter').addEventListener('click', () => {
-                    signOut(auth).then(() => { window.location.href = "connexion.html"; });
-                });
+                infoDiv.innerHTML = `Votant : <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Quitter</button>`;
+                document.getElementById('btn-deconnecter').addEventListener('click', () => { signOut(auth).then(() => { window.location.href = "connexion.html"; }); });
 
                 const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
                 if (docSnap.exists() && docSnap.data().role === "admin") {
-                    estAdmin = true;
                     document.getElementById('btn-admin').style.display = 'inline-block';
                     document.getElementById('btn-admin-match').style.display = 'inline-block';
                     document.getElementById('btn-admin-compo').style.display = 'inline-block';
@@ -286,74 +143,37 @@
 
         async function chargerMatchs() {
             const querySnapshot = await getDocs(collection(db, "matchs"));
-            let htmlP = "", htmlR = "", premierId = null;
-            const urlParams = new URLSearchParams(window.location.search);
-            const matchAForcer = urlParams.get('match');
+            let htmlPremiere = "";
+            let htmlReserve = "";
 
             querySnapshot.forEach((doc) => {
-                let d = doc.data();
-                if (!premierId) premierId = doc.id; 
-                let logoAdv = d.logo ? `<img src="${d.logo}" class="logo">` : `<div class="logo">🛡️</div>`;
+                let data = doc.data();
+                let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo">` : `<div class="logo">🛡️</div>`;
+                
+                // LE LOGO EST INTEGRE ICI DANS CHAQUE LIGNE DE MATCH
                 let matchHtml = `
-                    <div class="match-row" id="row-${doc.id}" onclick="selectionnerMatch('${doc.id}')">
+                    <a href="match_detail.html?match=${doc.id}" class="match-row">
                         <div class="match-content">
-                            <div class="team"><div class="logo" style="border:2px solid #1a1a1a;">⚽</div><span class="team-name">FC Chalosse</span></div>
-                            <div style="font-weight:bold; color:#1a1a1a;">-</div>
-                            <div class="team right"><span class="team-name">${d.adversaire}</span>${logoAdv}</div>
+                            <div class="team">
+                                <img src="chalosse.webp" class="logo" alt="Logo Chalosse">
+                                <span class="team-name">FC Chalosse</span>
+                            </div>
+                            <div style="font-weight:bold; color:#1a1a1a;">VS</div>
+                            <div class="team right">
+                                <span class="team-name">${data.adversaire || "Adversaire"}</span>
+                                ${logoAdversaire}
+                            </div>
                         </div>
-                        <div class="match-date">📅 ${d.date}</div>
-                    </div>`;
-                if (d.equipe_type === "premiere") htmlP += matchHtml; else htmlR += matchHtml;
+                        <div class="match-date">📅 Match du ${data.date || "Date inconnue"}</div>
+                    </a>
+                `;
+
+                if (data.equipe_type === "premiere") htmlPremiere += matchHtml;
+                else htmlReserve += matchHtml;
             });
 
-            document.getElementById('matchs-premiere').innerHTML = htmlP || "<p>Aucun match.</p>";
-            document.getElementById('matchs-reserve').innerHTML = htmlR || "<p>Aucun match.</p>";
-            
-            if (matchAForcer) window.selectionnerMatch(matchAForcer);
-            else if (premierId) window.selectionnerMatch(premierId);
-        }
-
-        window.selectionnerMatch = function(id) {
-            window.matchSelectionne = id;
-            document.querySelectorAll('.match-row').forEach(row => row.classList.remove('active'));
-            const card = document.getElementById(`row-${id}`);
-            if (card) { card.classList.add('active'); window.chargerJoueurs(); }
-        }
-
-        window.supprimerJoueur = async function(id, nom) {
-            if (confirm(`Supprimer ${nom} ?`)) {
-                await deleteDoc(doc(db, "utilisateurs", id));
-                window.chargerJoueurs();
-            }
-        };
-
-        window.chargerJoueurs = async function() {
-            const conteneur = document.getElementById('liste-joueurs');
-            const matchSnap = await getDoc(doc(db, "matchs", window.matchSelectionne));
-            const compo = matchSnap.exists() && matchSnap.data().compo ? matchSnap.data().compo : [];
-            const querySnapshot = await getDocs(collection(db, "utilisateurs"));
-            let html = "";
-
-            for (const jDoc of querySnapshot.docs) {
-                let data = jDoc.data();
-                if (data.role === "joueur" && compo.includes(jDoc.id)) {
-                    let btnDel = estAdmin ? `<button onclick="supprimerJoueur('${jDoc.id}', '${data.prenom}')" class="btn-supprimer">🗑️</button>` : '';
-                    const nId = `${window.matchSelectionne}_${jDoc.id}_${auth.currentUser.uid}`;
-                    const nSnap = await getDoc(doc(db, "notes", nId));
-                    let noteTxt = nSnap.exists() ? `<span style="color:#1a1a1a; font-weight:bold; margin-right:10px;">⭐ ${nSnap.data().note}</span>` : "";
-                    
-                    html += `
-                        <div class="card">
-                            <div><strong>${data.prenom} ${data.nom}</strong><br><small>${data.poste || ""}</small></div>
-                            <div style="display:flex; align-items:center;">
-                                ${noteTxt}
-                                <a href="noter.html?id=${jDoc.id}&match=${window.matchSelectionne}" class="btn-noter">${nSnap.exists() ? "Modifier" : "Noter"}</a>
-                                ${btnDel}
-                            </div>
-                        </div>`;
-                }
-            }
-            conteneur.innerHTML = html || "<p style='color:gray;'>Aucune compo faite.</p>";
+            document.getElementById('matchs-premiere').innerHTML = htmlPremiere || "<p>Aucun match prévu.</p>";
+            document.getElementById('matchs-reserve').innerHTML = htmlReserve || "<p>Aucun match prévu.</p>";
         }
     </script>
 </body>

@@ -125,7 +125,8 @@
                 });
 
                 
-                window.location.href = `index.html?match=${matchId}`;
+                // On retourne sur la page de détail du match, pas sur l'accueil !
+                window.location.href = `match_detail.html?match=${matchId}`;
             } catch (e) {
                 alert("❌ Erreur lors de l'enregistrement : " + e.message);
             }
