@@ -3,74 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Détails du Match - FC Chalosse</title>
+    <title>Détail du Match - FC Chalosse</title>
+    
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+
     <style>
-        body { 
-            font-family: 'Segoe UI', sans-serif; 
-            background: #f0f2f5; 
-            padding: 20px; 
-            text-align: center; 
-        }
-        .container { max-width: 600px; margin: auto; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; margin: 0; }
+        .container { max-width: 600px; margin: auto; padding-bottom: 30px; }
         
-        h2 { 
-            background-color: #1a1a1a; 
-            color: #ffcc00; 
-            padding: 15px; 
-            border-radius: 12px; 
-            border: 2px solid #1a1a1a;
-            margin-bottom: 20px;
-        }
+        h1 { display: flex; align-items: center; justify-content: center; gap: 12px; background-color: #1a1a1a; color: #ffcc00; padding: 15px; border-radius: 12px; border: 2px solid #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; margin-bottom: 20px; font-size: 1.5em; }
+        .logo-header { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: white; border: 2px solid #ffcc00; }
 
-        .card { 
-            background: #fffce6; 
-            border: 2px solid #1a1a1a; 
-            padding: 15px 20px; 
-            margin: 10px 0; 
-            border-radius: 12px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            text-align: left; 
-        }
+        /* Système d'onglets */
+        .onglets { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-onglet { flex: 1; padding: 12px; border: 2px solid #1a1a1a; border-radius: 8px; font-weight: bold; cursor: pointer; background: #e2e3e5; color: #1a1a1a; font-size: 1em; transition: 0.2s; }
+        .btn-onglet.actif { background: #ffcc00; color: #1a1a1a; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .contenu-onglet { display: none; }
+        .contenu-onglet.actif { display: block; }
 
-        .btn-noter { 
-            background: #007bff; 
-            color: white; 
-            padding: 10px 15px; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            font-weight: bold; 
-            font-size: 0.9em; 
-        }
+        .card { background: #fffce6; border: 2px solid #1a1a1a; padding: 15px; border-radius: 12px; text-align: left; margin-bottom: 15px; }
+        
+        .classement-ligne { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #ddd; align-items: center; }
+        .classement-ligne:last-child { border-bottom: none; }
+        .note-badge { background: #1a1a1a; color: #ffcc00; padding: 4px 10px; border-radius: 6px; font-size: 0.9em; font-weight: bold; }
+        .rang-joueur { width: 30px; display: inline-block; font-weight: bold; font-size: 1.1em; color: #1a1a1a; }
 
-        .btn-retour { 
-            display: inline-block; 
-            margin-top: 20px; 
-            background: #6c757d; 
-            color: white; 
-            padding: 12px 20px; 
-            border-radius: 8px; 
-            text-decoration: none; 
-            font-weight: bold;
-        }
+        .joueur-ligne { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #1a1a1a; }
+        .joueur-ligne:last-child { border-bottom: none; }
+        .joueur-nom { font-weight: bold; color: #1a1a1a; font-size: 1.1em; }
+        
+        .input-note { width: 70px; padding: 8px; border-radius: 6px; border: 2px solid #1a1a1a; font-size: 1.1em; font-weight: bold; text-align: center; background: white; }
+
+        /* Bloc d'info Admin */
+        .info-admin { display: none; background: #17a2b8; color: white; padding: 10px; border-radius: 8px; border: 2px solid #1a1a1a; margin-bottom: 15px; font-weight: bold; font-size: 0.95em; }
+
+        /* Boutons d'action */
+        .btn-valider { background: #28a745; color: white; border: 2px solid #1a1a1a; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1.1em; margin-top: 15px; text-transform: uppercase; }
+        .btn-retour { display: inline-block; margin-top: 20px; background: #1a1a1a; color: #ffcc00; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 2px solid #1a1a1a; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2 id="titre-match">Chargement du match...</h2>
+        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> <span id="titre-match">Match</span></h1>
         
-        <div id="liste-joueurs">
-            <p>Chargement de l'effectif...</p>
+        <div class="onglets">
+            <button class="btn-onglet actif" id="btn-noter" onclick="changerOnglet('noter')">📝 Noter</button>
+            <button class="btn-onglet" id="btn-classement" onclick="changerOnglet('classement')">📊 Classement</button>
         </div>
 
-        <a href="index.html" class="btn-retour">🔙 Retour aux matchs</a>
+        <div id="onglet-noter" class="contenu-onglet actif">
+            <div class="card" id="liste-compo">
+                <p>Chargement des joueurs...</p>
+            </div>
+            <button class="btn-valider" id="btn-valider-notes" onclick="sauvegarderNotes()" style="display: none;">💾 Valider mes notes</button>
+        </div>
+
+        <div id="onglet-classement" class="contenu-onglet">
+            <div id="admin-votants" class="info-admin">
+                👥 Total des votants pour ce match : <span id="nb-votants">0</span>
+            </div>
+
+            <div class="card" id="liste-classement">
+                <p style="text-align: center; color: #666;">Aucune note attribuée pour le moment.</p>
+            </div>
+        </div>
+        
+        <a href="index.html" class="btn-retour">🔙 Retour à l'accueil</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -89,46 +94,193 @@
         const urlParams = new URLSearchParams(window.location.search);
         const matchId = urlParams.get('match');
 
+        let utilisateurActuel = null;
+        let estAdmin = false;
+        let notesExistantes = {};
+
+        // Gestion des onglets
+        window.changerOnglet = function(ongletCible) {
+            document.getElementById('btn-noter').classList.remove('actif');
+            document.getElementById('btn-classement').classList.remove('actif');
+            document.getElementById('onglet-noter').classList.remove('actif');
+            document.getElementById('onglet-classement').classList.remove('actif');
+
+            document.getElementById(`btn-${ongletCible}`).classList.add('actif');
+            document.getElementById(`onglet-${ongletCible}`).classList.add('actif');
+        };
+
         onAuthStateChanged(auth, async (user) => {
             if (user) {
-                chargerDetails();
+                utilisateurActuel = user;
+
+                // Vérification du rôle pour afficher les infos admin
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") {
+                    estAdmin = true;
+                }
+
+                if (!matchId) { window.location.href = "index.html"; return; }
+                chargerDetailsMatch();
             } else {
                 window.location.href = "connexion.html";
             }
         });
 
-        async function chargerDetails() {
-            if (!matchId) return;
+        async function chargerDetailsMatch() {
+            try {
+                const matchSnap = await getDoc(doc(db, "matchs", matchId));
+                if (!matchSnap.exists()) return;
+                
+                const matchData = matchSnap.data();
+                document.getElementById('titre-match').innerText = `Contre ${matchData.adversaire}`;
 
-            const matchSnap = await getDoc(doc(db, "matchs", matchId));
-            if (matchSnap.exists()) {
-                const d = matchSnap.data();
-                document.getElementById('titre-match').innerText = `VS ${d.adversaire}`;
-                const compo = d.compo || [];
-
-                const querySnapshot = await getDocs(collection(db, "utilisateurs"));
-                let html = "";
-
-                for (const jDoc of querySnapshot.docs) {
-                    let data = jDoc.data();
-                    if (data.role === "joueur" && compo.includes(jDoc.id)) {
-                        const nId = `${matchId}_${jDoc.id}_${auth.currentUser.uid}`;
-                        const nSnap = await getDoc(doc(db, "notes", nId));
-                        let noteTxt = nSnap.exists() ? `<span style="color:#1a1a1a; font-weight:bold; margin-right:10px;">⭐ ${nSnap.data().note}</span>` : "";
-                        
-                        html += `
-                            <div class="card">
-                                <div><strong>${data.prenom} ${data.nom}</strong><br><small>${data.poste || ""}</small></div>
-                                <div style="display:flex; align-items:center;">
-                                    ${noteTxt}
-                                    <a href="noter.html?id=${jDoc.id}&match=${matchId}" class="btn-noter">${nSnap.exists() ? "Modifier" : "Noter"}</a>
-                                </div>
-                            </div>`;
-                    }
+                const compoIds = matchData.compo || [];
+                if (compoIds.length === 0) {
+                    document.getElementById('liste-compo').innerHTML = "<p>Aucune composition pour ce match.</p>";
+                    return;
                 }
-                document.getElementById('liste-joueurs').innerHTML = html || "<p>Aucun joueur convoqué.</p>";
+
+                const joueursInfos = {};
+                const usersSnap = await getDocs(collection(db, "utilisateurs"));
+                usersSnap.forEach(u => {
+                    if (compoIds.includes(u.id)) joueursInfos[u.id] = `${u.data().prenom} ${u.data().nom}`;
+                });
+
+                const notesSnap = await getDocs(collection(db, "notes"));
+                let statsMatch = {};
+                let votantsUniques = new Set(); // Pour compter le nombre exact de votants différents
+                
+                compoIds.forEach(id => {
+                    if (joueursInfos[id]) statsMatch[id] = { nom: joueursInfos[id], total: 0, nb: 0 };
+                });
+
+                notesSnap.forEach(nDoc => {
+                    let noteData = nDoc.data();
+                    let parts = nDoc.id.split('_'); 
+                    
+                    if (parts[0] === matchId) {
+                        let jId = parts[1];
+                        let voterId = parts[2];
+                        
+                        // On ajoute le votant à notre liste (Set ignore automatiquement les doublons)
+                        votantsUniques.add(voterId);
+
+                        if (voterId === utilisateurActuel.uid) {
+                            notesExistantes[jId] = parseFloat(noteData.note);
+                        }
+
+                        if (statsMatch[jId]) {
+                            statsMatch[jId].total += parseFloat(noteData.note);
+                            statsMatch[jId].nb++;
+                        }
+                    }
+                });
+
+                // Si l'utilisateur est admin, on affiche le nombre de votants
+                if (estAdmin) {
+                    document.getElementById('admin-votants').style.display = 'block';
+                    document.getElementById('nb-votants').innerText = votantsUniques.size;
+                }
+
+                afficherClassement(statsMatch);
+
+                let htmlCompo = "";
+                compoIds.forEach(jId => {
+                    if (joueursInfos[jId]) {
+                        let noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
+                        htmlCompo += `
+                            <div class="joueur-ligne">
+                                <span class="joueur-nom">${joueursInfos[jId]}</span>
+                                <div>
+                                    <input type="number" class="input-note note-joueur" data-id="${jId}" min="0" max="10" step="0.5" value="${noteSaved}" placeholder="/10">
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                document.getElementById('liste-compo').innerHTML = htmlCompo;
+                document.getElementById('btn-valider-notes').style.display = 'block';
+
+            } catch (error) {
+                console.error("Erreur :", error);
             }
         }
+
+        function afficherClassement(statsMatch) {
+            let liste = [];
+            for (let id in statsMatch) {
+                if (statsMatch[id].nb > 0) {
+                    liste.push({ nom: statsMatch[id].nom, moyenne: (statsMatch[id].total / statsMatch[id].nb).toFixed(1) });
+                }
+            }
+
+            if (liste.length === 0) return;
+
+            liste.sort((a, b) => b.moyenne - a.moyenne);
+
+            let htmlClassement = "";
+            liste.forEach((j, index) => {
+                let rang = (index === 0) ? "🥇" : (index === 1) ? "🥈" : (index === 2) ? "🥉" : `${index + 1}.`;
+                htmlClassement += `
+                    <div class="classement-ligne">
+                        <span><span class="rang-joueur">${rang}</span> ${j.nom}</span> 
+                        <span class="note-badge">${j.moyenne} / 10</span>
+                    </div>`;
+            });
+            document.getElementById('liste-classement').innerHTML = htmlClassement;
+        }
+
+        window.sauvegarderNotes = async function() {
+            if (!utilisateurActuel) return;
+            
+            const bouton = document.getElementById('btn-valider-notes');
+            bouton.innerText = "⏳ Enregistrement..."; 
+            
+            const inputs = document.querySelectorAll('.note-joueur');
+            let promessesEnregistrement = [];
+            let auMoinsUneNoteValide = false;
+
+            inputs.forEach(input => {
+                let val = input.value.trim();
+                let joueurId = input.getAttribute('data-id');
+                
+                if (val !== "") {
+                    let note = parseFloat(val);
+                    if (!isNaN(note) && note >= 0 && note <= 10) {
+                        const docId = `${matchId}_${joueurId}_${utilisateurActuel.uid}`;
+                        promessesEnregistrement.push(
+                            setDoc(doc(db, "notes", docId), {
+                                matchId: matchId,
+                                joueurId: joueurId,
+                                voterId: utilisateurActuel.uid,
+                                note: note,
+                                date: new Date().toISOString()
+                            })
+                        );
+                        auMoinsUneNoteValide = true;
+                    }
+                }
+            });
+
+            if (!auMoinsUneNoteValide) {
+                alert("Vous n'avez saisi aucune note valide (entre 0 et 10).");
+                bouton.innerText = "💾 Valider mes notes";
+                return;
+            }
+
+            try {
+                await Promise.all(promessesEnregistrement);
+                alert("✅ Vos notes ont bien été enregistrées !");
+                await chargerDetailsMatch();
+                changerOnglet('classement');
+            } catch (error) {
+                console.error("Erreur d'enregistrement :", error);
+                alert("Une erreur s'est produite lors de la sauvegarde.");
+            } finally {
+                bouton.innerText = "💾 Valider mes notes";
+            }
+        };
     </script>
 </body>
 </html>

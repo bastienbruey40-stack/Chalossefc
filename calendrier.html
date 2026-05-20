@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Calendrier - FC Chalosse</title>
+    
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; margin: 0; }
+        .container { max-width: 600px; margin: auto; padding-bottom: 30px; }
+        
+        h1 { display: flex; align-items: center; justify-content: center; gap: 12px; background-color: #1a1a1a; color: #ffcc00; padding: 15px; border-radius: 12px; border: 2px solid #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; margin-bottom: 30px; font-size: 1.5em; }
+        
+        .titre-section { text-align: left; font-weight: bold; font-size: 1.1em; border-bottom: 3px solid; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; }
+        .titre-premiere { color: #1a1a1a; border-color: #1a1a1a; }
+        .titre-reserve { color: #b38f00; border-color: #ffcc00; }
+        
+        .match-list { display: flex; flex-direction: column; gap: 12px; }
+        .match-container { position: relative; margin-bottom: 5px; } 
+        .match-row { background: #fffce6; border: 2px solid #1a1a1a; border-radius: 12px; padding: 15px; cursor: pointer; text-decoration: none; color: inherit; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .match-content { display: flex; justify-content: space-between; align-items: center; }
+        .team { display: flex; align-items: center; gap: 10px; flex: 1; }
+        .team.right { justify-content: flex-end; text-align: right; }
+        .team-name { font-weight: bold; font-size: 0.95em; color: #1a1a1a; }
+        
+        .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: white; border: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .match-date { text-align: center; font-size: 0.8em; color: #1a1a1a; font-weight: bold; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        
+        .score-box { background: #ffcc00; color: #1a1a1a; font-weight: bold; font-size: 1.3em; padding: 5px 12px; border-radius: 8px; border: 2px solid #1a1a1a; min-width: 45px; text-align: center; }
+        .vs-box { font-weight: bold; color: #1a1a1a; font-size: 1em; }
+
+        .btn-supprimer-match { position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border: 2px solid #1a1a1a; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
+        .btn-score-match { position: absolute; top: -8px; left: -8px; background: #17a2b8; color: white; border: 2px solid #1a1a1a; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
+        
+        .btn-date { background: #e2e3e5; border: 1px solid #1a1a1a; border-radius: 6px; padding: 2px 6px; cursor: pointer; font-size: 1.1em; transition: 0.2s; }
+        .btn-date:hover { background: #ffcc00; }
+
+        .btn-retour { display: inline-block; margin-top: 20px; background: #1a1a1a; color: #ffcc00; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 2px solid #1a1a1a; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📅 Calendrier & Résultats</h1>
+        
+        <div class="titre-section titre-premiere">🔵 Équipe Première</div>
+        <div id="matchs-premiere" class="match-list"><p style="color:gray;">Chargement...</p></div>
+
+        <div class="titre-section titre-reserve">🟢 Équipe Réserve</div>
+        <div id="matchs-reserve" class="match-list"><p style="color:gray;">Chargement...</p></div>
+
+        <a href="index.html" class="btn-retour">🔙 Retour à l'accueil</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
+            authDomain: "chalosse-d1ef5.firebaseapp.com",
+            projectId: "chalosse-d1ef5",
+            storageBucket: "chalosse-d1ef5.firebasestorage.app",
+            messagingSenderId: "33787098721",
+            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let estAdmin = false;
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
+                if (docSnap.exists() && docSnap.data().role === "admin") {
+                    estAdmin = true;
+                }
+                chargerMatchs(); 
+            } else {
+                window.location.href = "connexion.html";
+            }
+        });
+
+        async function chargerMatchs() {
+            const querySnapshot = await getDocs(collection(db, "matchs"));
+            let htmlPremiere = "";
+            let htmlReserve = "";
+
+            querySnapshot.forEach((doc) => {
+                let data = doc.data();
+                let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo">` : `<div class="logo">🛡️</div>`;
+                
+                let affichageCentre = `<div class="vs-box">VS</div>`;
+                if (data.score_chalosse !== undefined && data.score_chalosse !== null) {
+                    affichageCentre = `<div class="score-box">${data.score_chalosse} - ${data.score_adversaire}</div>`;
+                }
+
+                let btnSupprimer = estAdmin ? `<button class="btn-supprimer-match" onclick="event.preventDefault(); supprimerMatch('${doc.id}', '${data.adversaire}')" title="Supprimer le match">🗑️</button>` : "";
+                let btnScore = estAdmin ? `<button class="btn-score-match" onclick="event.preventDefault(); modifierScore('${doc.id}', '${data.adversaire}', '${data.score_chalosse}', '${data.score_adversaire}')" title="Modifier le score">✏️</button>` : "";
+                
+                let texteDate = data.date || "Date inconnue";
+                let btnDate = estAdmin ? `<button class="btn-date" onclick="event.preventDefault(); modifierDate('${doc.id}', '${texteDate}')" title="Modifier la date">🗓️</button>` : "";
+
+                let matchHtml = `
+                    <div class="match-container">
+                        ${btnScore}
+                        <a href="match_detail.html?match=${doc.id}" class="match-row">
+                            <div class="match-content">
+                                <div class="team">
+                                    <img src="chalosse.webp" class="logo" alt="Logo">
+                                    <span class="team-name">FC Chalosse</span>
+                                </div>
+                                ${affichageCentre}
+                                <div class="team right">
+                                    <span class="team-name">${data.adversaire || "Adversaire"}</span>
+                                    ${logoAdversaire}
+                                </div>
+                            </div>
+                            <div class="match-date">📅 ${texteDate} ${btnDate}</div>
+                        </a>
+                        ${btnSupprimer}
+                    </div>
+                `;
+
+                if (data.equipe_type === "premiere") htmlPremiere += matchHtml;
+                else htmlReserve += matchHtml;
+            });
+
+            document.getElementById('matchs-premiere').innerHTML = htmlPremiere || "<p>Aucun match prévu.</p>";
+            document.getElementById('matchs-reserve').innerHTML = htmlReserve || "<p>Aucun match prévu.</p>";
+        }
+
+        window.supprimerMatch = async function(matchId, adversaire) {
+            if (confirm(`⚠️ Supprimer définitivement le match contre ${adversaire} ?`)) {
+                await deleteDoc(doc(db, "matchs", matchId));
+                chargerMatchs();
+            }
+        };
+
+        window.modifierScore = async function(matchId, adversaire, scoreC, scoreA) {
+            let valC = (scoreC !== "undefined" && scoreC !== "null") ? scoreC : "";
+            let valA = (scoreA !== "undefined" && scoreA !== "null") ? scoreA : "";
+
+            let saisieChalosse = prompt(`Score de FC Chalosse (Laissez vide pour effacer) :`, valC);
+            if (saisieChalosse === null) return;
+            if (saisieChalosse.trim() === "") {
+                await updateDoc(doc(db, "matchs", matchId), { score_chalosse: null, score_adversaire: null });
+                chargerMatchs();
+                return;
+            }
+
+            let saisieAdversaire = prompt(`Score de ${adversaire} :`, valA);
+            if (saisieAdversaire === null) return;
+
+            await updateDoc(doc(db, "matchs", matchId), {
+                score_chalosse: parseInt(saisieChalosse) || 0,
+                score_adversaire: parseInt(saisieAdversaire) || 0
+            });
+            chargerMatchs();
+        };
+
+        window.modifierDate = async function(matchId, ancienneDate) {
+            let nouvelleDate = prompt("Nouvelle date (Format JJ/MM/AAAA, ex: 15/11/2026) :", ancienneDate);
+            if (nouvelleDate !== null && nouvelleDate.trim() !== "") {
+                await updateDoc(doc(db, "matchs", matchId), {
+                    date: nouvelleDate.trim()
+                });
+                chargerMatchs();
+            }
+        };
+    </script>
+</body>
+</html>

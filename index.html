@@ -31,12 +31,8 @@
         .titre-premiere { color: #1a1a1a; border-color: #1a1a1a; }
         .titre-reserve { color: #b38f00; border-color: #ffcc00; }
         
-        .match-list { display: flex; flex-direction: column; gap: 12px; }
-        
         .match-container { position: relative; margin-bottom: 5px; } 
-        
-        .match-row { background: #fffce6; border: 2px solid #1a1a1a; border-radius: 12px; padding: 15px; cursor: pointer; text-decoration: none; color: inherit; display: block; transition: transform 0.1s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .match-row:active { transform: scale(0.98); background: #ffea00; }
+        .match-row { background: #fffce6; border: 2px solid #1a1a1a; border-radius: 12px; padding: 15px; cursor: pointer; text-decoration: none; color: inherit; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         
         .match-content { display: flex; justify-content: space-between; align-items: center; }
         .team { display: flex; align-items: center; gap: 10px; flex: 1; }
@@ -46,12 +42,9 @@
         .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: white; border: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
         .match-date { text-align: center; font-size: 0.8em; color: #1a1a1a; font-weight: bold; margin-top: 8px; }
         
-        /* Styles pour l'affichage du score */
         .score-box { background: #ffcc00; color: #1a1a1a; font-weight: bold; font-size: 1.3em; padding: 5px 12px; border-radius: 8px; border: 2px solid #1a1a1a; min-width: 45px; text-align: center; }
         .vs-box { font-weight: bold; color: #1a1a1a; font-size: 1em; }
 
-        /* Boutons d'édition sur les matchs */
-        .btn-supprimer-match { position: absolute; top: -8px; right: -8px; background: #dc3545; color: white; border: 2px solid #1a1a1a; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
         .btn-score-match { position: absolute; top: -8px; left: -8px; background: #17a2b8; color: white; border: 2px solid #1a1a1a; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
     </style>
 </head>
@@ -60,9 +53,9 @@
     <div class="container">
         <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> FC Chalosse</h1>
         
-        <!-- Navigation Principale -->
         <div style="margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: center;">
             <a href="effectif.html" class="btn-jaune">👕 Effectif</a>
+            <a href="calendrier.html" class="btn-jaune" style="background: #17a2b8; color: white;">📅 Calendrier</a>
             <a href="stats.html" class="btn-jaune" style="background: #e2e3e5; color: black;">📊 Stats Saison</a>
             
             <a href="ajouter.html" id="btn-admin" class="btn-vert">➕ Joueur</a>
@@ -72,19 +65,18 @@
             <a href="gerer_comptes.html" id="btn-admin-comptes" class="btn-vert" style="background: #dc3545;">⚙️ Comptes</a>
         </div>
 
-        <div class="titre-section titre-premiere">🔵 Équipe Première</div>
-        <div id="matchs-premiere" class="match-list"><p style="color:gray;">Chargement des matchs...</p></div>
+        <div class="titre-section titre-premiere">🔵 À l'affiche - Première</div>
+        <div id="matchs-premiere"><p style="color:gray;">Chargement...</p></div>
 
-        <div class="titre-section titre-reserve">🟢 Équipe Réserve</div>
-        <div id="matchs-reserve" class="match-list"><p style="color:gray;">Chargement des matchs...</p></div>
+        <div class="titre-section titre-reserve">🟢 À l'affiche - Réserve</div>
+        <div id="matchs-reserve"><p style="color:gray;">Chargement...</p></div>
     </div>
 
-    <div id="info-connexion">Vérification de la connexion...</div>
+    <div id="info-connexion">Vérification...</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        // Ajout de updateDoc ici
-        import { getFirestore, collection, getDocs, doc, getDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
@@ -117,30 +109,66 @@
                     document.getElementById('btn-admin-stats').style.display = 'inline-block';
                     document.getElementById('btn-admin-comptes').style.display = 'inline-block';
                 }
-                chargerMatchs(); 
+                chargerDerniersMatchs(); 
             } else {
                 window.location.href = "connexion.html";
             }
         });
 
-        async function chargerMatchs() {
+        function parserDate(dateStr) {
+            if (!dateStr) return NaN;
+            
+            let parseStandard = Date.parse(dateStr);
+            if (!isNaN(parseStandard)) return parseStandard;
+            
+            let parts = dateStr.split('/');
+            if (parts.length === 3) {
+                let jour = parts[0].padStart(2, '0');
+                let mois = parts[1].padStart(2, '0');
+                let annee = parts[2];
+                if (annee.length === 2) annee = "20" + annee;
+                return Date.parse(`${annee}-${mois}-${jour}T15:00:00`);
+            }
+            return NaN;
+        }
+
+        function selectionnerMatchLePlusProche(listeMatchs) {
+            if (listeMatchs.length === 0) return "<p>Aucun match prévu.</p>";
+
+            let matchLePlusProche = listeMatchs[0];
+            let diffMin = Infinity;
+            let aujourdHui = Date.now();
+
+            for (let i = 0; i < listeMatchs.length; i++) {
+                let msMatch = parserDate(listeMatchs[i].dateBrute);
+                
+                if (!isNaN(msMatch)) {
+                    let ecart = Math.abs(msMatch - aujourdHui);
+                    if (ecart < diffMin) {
+                        diffMin = ecart;
+                        matchLePlusProche = listeMatchs[i];
+                    }
+                }
+            }
+
+            return matchLePlusProche.html;
+        }
+
+        async function chargerDerniersMatchs() {
             const querySnapshot = await getDocs(collection(db, "matchs"));
-            let htmlPremiere = "";
-            let htmlReserve = "";
+            
+            let listePremiere = [];
+            let listeReserve = [];
 
             querySnapshot.forEach((doc) => {
                 let data = doc.data();
                 let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo">` : `<div class="logo">🛡️</div>`;
                 
-                // --- GESTION DE L'AFFICHAGE DU SCORE ---
-                // Si un score existe, on l'affiche dans un beau rectangle jaune. Sinon, juste "VS"
                 let affichageCentre = `<div class="vs-box">VS</div>`;
                 if (data.score_chalosse !== undefined && data.score_chalosse !== null) {
                     affichageCentre = `<div class="score-box">${data.score_chalosse} - ${data.score_adversaire}</div>`;
                 }
 
-                // Boutons Admin
-                let btnSupprimer = estAdmin ? `<button class="btn-supprimer-match" onclick="event.preventDefault(); supprimerMatch('${doc.id}', '${data.adversaire}')" title="Supprimer">🗑️</button>` : "";
                 let btnScore = estAdmin ? `<button class="btn-score-match" onclick="event.preventDefault(); modifierScore('${doc.id}', '${data.adversaire}', '${data.score_chalosse}', '${data.score_adversaire}')" title="Éditer le score">✏️</button>` : "";
 
                 let matchHtml = `
@@ -160,58 +188,39 @@
                             </div>
                             <div class="match-date">📅 ${data.date || "Date inconnue"}</div>
                         </a>
-                        ${btnSupprimer}
                     </div>
                 `;
 
-                if (data.equipe_type === "premiere") htmlPremiere += matchHtml;
-                else htmlReserve += matchHtml;
+                let matchObjet = { html: matchHtml, dateBrute: data.date };
+
+                if (data.equipe_type === "premiere") listePremiere.push(matchObjet);
+                else listeReserve.push(matchObjet);
             });
 
-            document.getElementById('matchs-premiere').innerHTML = htmlPremiere || "<p>Aucun match prévu.</p>";
-            document.getElementById('matchs-reserve').innerHTML = htmlReserve || "<p>Aucun match prévu.</p>";
+            document.getElementById('matchs-premiere').innerHTML = selectionnerMatchLePlusProche(listePremiere);
+            document.getElementById('matchs-reserve').innerHTML = selectionnerMatchLePlusProche(listeReserve);
         }
 
-        window.supprimerMatch = async function(matchId, adversaire) {
-            if (confirm(`⚠️ Voulez-vous vraiment supprimer définitivement le match contre ${adversaire} ?`)) {
-                try {
-                    await deleteDoc(doc(db, "matchs", matchId));
-                    chargerMatchs();
-                } catch (error) { alert("Erreur : " + error.message); }
-            }
-        };
-
-        // --- NOUVELLE FONCTION POUR AJOUTER/MODIFIER LE SCORE ---
         window.modifierScore = async function(matchId, adversaire, scoreC, scoreA) {
-            // Nettoyage des valeurs si elles n'existent pas encore
             let valC = (scoreC !== "undefined" && scoreC !== "null") ? scoreC : "";
             let valA = (scoreA !== "undefined" && scoreA !== "null") ? scoreA : "";
 
-            let saisieChalosse = prompt(`Score de FC Chalosse :\n(Laissez vide pour effacer le score du match)`, valC);
-            if (saisieChalosse === null) return; // Si on clique sur "Annuler"
-
-            // Si on laisse vide, ça efface les scores du match (pratique en cas d'erreur ou de report)
+            let saisieChalosse = prompt(`Score de FC Chalosse :`, valC);
+            if (saisieChalosse === null) return;
             if (saisieChalosse.trim() === "") {
-                try {
-                    await updateDoc(doc(db, "matchs", matchId), { score_chalosse: null, score_adversaire: null });
-                    chargerMatchs();
-                } catch(e) { alert("Erreur : " + e.message); }
+                await updateDoc(doc(db, "matchs", matchId), { score_chalosse: null, score_adversaire: null });
+                chargerDerniersMatchs();
                 return;
             }
 
             let saisieAdversaire = prompt(`Score de ${adversaire} :`, valA);
-            if (saisieAdversaire === null) return; // Si on clique sur "Annuler"
+            if (saisieAdversaire === null) return;
 
-            try {
-                // On enregistre les scores sous format nombre (parseInt)
-                await updateDoc(doc(db, "matchs", matchId), {
-                    score_chalosse: parseInt(saisieChalosse) || 0,
-                    score_adversaire: parseInt(saisieAdversaire) || 0
-                });
-                chargerMatchs(); // Rafraîchit l'affichage en direct
-            } catch(e) {
-                alert("Erreur lors de l'enregistrement : " + e.message);
-            }
+            await updateDoc(doc(db, "matchs", matchId), {
+                score_chalosse: parseInt(saisieChalosse) || 0,
+                score_adversaire: parseInt(saisieAdversaire) || 0
+            });
+            chargerDerniersMatchs(); 
         };
     </script>
 </body>
