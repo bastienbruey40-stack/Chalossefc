@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>FC Chalosse - Accueil</title>
 
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,7 +15,7 @@
     <link rel="manifest" href="manifest.json">
 
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; padding-bottom: 90px; text-align: center; margin: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; padding-bottom: 90px; text-align: center; margin: 0; -webkit-text-size-adjust: 100%; }
         .container { max-width: 600px; margin: auto; }
         
         h1 { display: flex; align-items: center; justify-content: center; gap: 12px; background-color: #1a1a1a; color: #ffcc00; padding: 15px; border-radius: 12px; border: 2px solid #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; margin-bottom: 30px; font-size: 1.6em; }
@@ -222,19 +222,6 @@
             });
             chargerDerniersMatchs(); 
         };
-
-        // Activer le mode Application (Service Worker)
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                .then(registration => {
-                    console.log('Service Worker enregistré avec succès !');
-                })
-                .catch(err => {
-                    console.log('Erreur Service Worker : ', err);
-                });
-            });
-        }
     </script>
 </body>
 </html>
