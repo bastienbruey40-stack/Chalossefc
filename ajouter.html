@@ -40,6 +40,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        // AJOUT : Importation du module d'authentification
+        import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
@@ -52,6 +54,8 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+        // AJOUT : Initialisation de l'authentification pour que Firebase reconnaisse ton compte admin
+        const auth = getAuth(app);
 
         window.ajouterJoueur = async function() {
             const prenomVal = document.getElementById('prenom').value;
