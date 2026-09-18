@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ajouter un joueur - FC Chalosse</title>
+    <title>Ajouter un match - FC Chalosse</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
         .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -15,33 +15,32 @@
 <body>
 
     <div class="card">
-        <h2>➕ Nouvelle Recrue</h2>
+        <h2>📅 Nouveau Match</h2>
         
-        <label style="text-align: left; display: block;">Prénom :</label>
-        <input type="text" id="prenom" placeholder="Ex: Zinedine">
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Nom :</label>
-        <input type="text" id="nom" placeholder="Ex: Zidane">
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Poste :</label>
-        <select id="poste">
-            <option value="Gardien">Gardien</option>
-            <option value="Défenseur">Défenseur</option>
-            <option value="Milieu">Milieu</option>
-            <option value="Attaquant">Attaquant</option>
-            <option value="Coach">Coach</option>
+        <label style="text-align: left; display: block;">Équipe concernée :</label>
+        <select id="equipe_type">
+            <option value="premiere">🔵 Équipe Première</option>
+            <option value="reserve">🟢 Équipe Réserve</option>
         </select>
+
+        <label style="text-align: left; display: block; margin-top: 10px;">Nom de l'adversaire :</label>
+        <input type="text" id="adversaire" placeholder="Ex: FC Doazit">
         
-        <button class="btn" onclick="ajouterJoueur()">Ajouter à l'effectif</button>
+        <label style="text-align: left; display: block; margin-top: 10px;">Date du match :</label>
+        <input type="date" id="date">
+        
+        <label style="text-align: left; display: block; margin-top: 10px;">Lien logo adverse (Optionnel) :</label>
+        <input type="url" id="logo" placeholder="https://...">
+        
+        <button class="btn" onclick="creerMatch()">Ajouter le match</button>
         <br>
-        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
+        <a href="index.html" class="btn-retour">Annuler</a>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        // AJOUT : Importation du module d'authentification
-        import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
@@ -54,31 +53,36 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        // AJOUT : Initialisation de l'authentification pour que Firebase reconnaisse ton compte admin
         const auth = getAuth(app);
 
-        window.ajouterJoueur = async function() {
-            const prenomVal = document.getElementById('prenom').value;
-            const nomVal = document.getElementById('nom').value;
-            const posteVal = document.getElementById('poste').value;
-
-            if(prenomVal === "" || nomVal === "") {
-                alert("Merci de remplir le nom et le prénom !");
-                return;
+        // Cette partie vérifie que tu es bien connecté avant de te laisser faire quoi que ce soit
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                alert("Vous devez être connecté en administrateur pour ajouter un match !");
+                window.location.href = "connexion.html";
             }
+        });
+
+        window.creerMatch = async function() {
+            const equipeType = document.getElementById('equipe_type').value;
+            const adversaireVal = document.getElementById('adversaire').value;
+            const dateVal = document.getElementById('date').value;
+            const logoVal = document.getElementById('logo').value;
+
+            if(adversaireVal === "" || dateVal === "") return alert("Remplis l'adversaire et la date !");
 
             try {
-                // On ajoute le joueur dans la collection "utilisateurs" avec le rôle "joueur"
-                await addDoc(collection(db, "utilisateurs"), {
-                    prenom: prenomVal,
-                    nom: nomVal,
-                    poste: posteVal,
-                    role: "joueur" 
+                await addDoc(collection(db, "matchs"), {
+                    equipe_type: equipeType, // "premiere" ou "reserve"
+                    adversaire: adversaireVal,
+                    date: dateVal,
+                    logo: logoVal,
+                    compo: [] // On initialise une liste de joueurs vide pour ce match
                 });
-                alert("✅ Joueur ajouté avec succès !");
-                window.location.href = "index.html"; // Retour automatique à l'accueil
-            } catch (e) {
-                alert("❌ Erreur lors de l'ajout : " + e.message);
+                alert("✅ Match ajouté !");
+                window.location.href = "index.html";
+            } catch (e) { 
+                alert("❌ Opération bloquée : " + e.message + "\nAssurez-vous que votre compte a bien le rôle 'admin' dans la base de données."); 
             }
         }
     </script>
