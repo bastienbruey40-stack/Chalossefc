@@ -17,12 +17,6 @@
         <h1>Connexion</h1>
         <p class="muted">Accédez à votre espace joueur / admin.</p>
 
-        <div class="onglets" role="tablist" style="margin-bottom: 16px;">
-            <button type="button" class="btn-onglet actif" data-mode="password">🔑 Mot de passe</button>
-            <button type="button" class="btn-onglet" data-mode="magic">✉️ Lien par mail</button>
-        </div>
-
-        <!-- Mode 1 : Email + Mot de passe -->
         <form id="form-connexion">
             <label for="in-email">Adresse email</label>
             <input type="email" id="in-email" placeholder="vous@exemple.fr" autocomplete="email" required>
@@ -40,57 +34,30 @@
             <button class="btn" type="submit" id="btn-connecter">Se connecter</button>
         </form>
 
-        <!-- Mode 2 : Connexion sans mot de passe (lien envoyé par email) -->
-        <form id="form-magic" class="hidden">
-            <label for="in-email-magic">Votre adresse email</label>
-            <input type="email" id="in-email-magic" placeholder="vous@exemple.fr" autocomplete="email" required>
-            <p class="muted" style="font-size: .83rem; margin: 8px 0 4px;">
-                Nous vous enverrons un lien de connexion instantané par e-mail, sans mot de passe.
-            </p>
-            <button class="btn" type="submit" id="btn-magic">✉️ Recevoir le lien par mail</button>
-        </form>
-
-        <a href="inscription.html" class="lien">Pas encore de compte ? <strong>S'inscrire avec un mail</strong></a>
+        <a href="inscription.html" class="lien">Pas encore de compte ? <strong>S'inscrire</strong></a>
     </div>
 
     <script type="module">
         import {
             signInWithEmailAndPassword,
             sendPasswordResetEmail,
-            sendSignInLinkToEmail,
-            isSignInWithEmailLink,
-            signInWithEmailLink
+            deleteUser
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { auth, db } from "./js/firebase.js";
         import { toast, flash, formulaire, chargement, afficherFlash } from "./js/ui.js";
 
+        auth.languageCode = 'fr';
         afficherFlash();
-
-        // Bascule entre connexion par mot de passe et lien par mail
-        const formPassword = document.getElementById('form-connexion');
-        const formMagic = document.getElementById('form-magic');
-        document.querySelectorAll('[data-mode]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('actif', b === btn));
-                const isMagic = btn.dataset.mode === 'magic';
-                formPassword.classList.toggle('hidden', isMagic);
-                formMagic.classList.toggle('hidden', !isMagic);
-                if (isMagic && document.getElementById('in-email').value) {
-                    document.getElementById('in-email-magic').value = document.getElementById('in-email').value;
-                }
-            });
-        });
 
         // Afficher / masquer le mot de passe
         const inPw = document.getElementById('in-password');
         document.getElementById('btn-toggle-pw').addEventListener('click', () => {
-            const visible = inPw.type === 'text';
-            inPw.type = visible ? 'password' : 'text';
+            inPw.type = inPw.type === 'text' ? 'password' : 'text';
         });
 
-        // Connexion standard Email + Mot de passe
-        formPassword.addEventListener('submit', async (e) => {
+        // Connexion Email + Mot de passe
+        document.getElementById('form-connexion').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('in-email').value.trim();
             const password = inPw.value;
@@ -99,7 +66,53 @@
             const bouton = document.getElementById('btn-connecter');
             chargement(bouton, true, 'Connexion…');
             try {
-                await signInWithEmailAndPassword(auth, email, password);
+                const { user } = await signInWithEmailAndPassword(auth, email, password);
+
+                // Vérifie si la fiche utilisateur existe dans Firestore
+                const snap = await getDoc(doc(db, "utilisateurs", user.uid));
+                const profil = snap.exists() ? snap.data() : null;
+
+                if (!profil) {
+                    // Ce compte a été supprimé par l'administrateur dans Firestore !
+                    // 1) Si une recréation était en attente après un reset de mot de passe :
+                    let attenteRecreation = null;
+                    try {
+                        const raw = localStorage.getItem('chalosse_recreation_profil');
+                        if (raw) {
+                            const p = JSON.parse(raw);
+                            if (p.email?.toLowerCase() === email.toLowerCase()) attenteRecreation = p;
+                        }
+                    } catch (_) {}
+
+                    if (attenteRecreation) {
+                        localStorage.removeItem('chalosse_recreation_profil');
+                        await setDoc(doc(db, "utilisateurs", user.uid), {
+                            prenom: attenteRecreation.prenom,
+                            nom: attenteRecreation.nom,
+                            email: email,
+                            role: "utilisateur",
+                            attente_confirmation_mail: false
+                        });
+                        flash("Votre nouveau compte a été créé avec succès !");
+                        window.location.href = "index.html";
+                        return;
+                    }
+
+                    // 2) Sinon, on purge automatiquement l'utilisateur de Firebase Auth pour libérer l'adresse e-mail !
+                    await deleteUser(user).catch(() => {});
+                    toast("Ce compte avait été supprimé par un administrateur. Votre adresse e-mail est maintenant libérée : vous pouvez vous réinscrire !", 'info', 6500);
+                    chargement(bouton, false);
+                    return;
+                }
+
+                if (profil.attente_confirmation_mail && !user.emailVerified) {
+                    window.location.href = "inscription.html?attente=1";
+                    return;
+                }
+                if (profil.attente_confirmation_mail && user.emailVerified) {
+                    await updateDoc(doc(db, "utilisateurs", user.uid), { attente_confirmation_mail: false }).catch(() => {});
+                }
+
                 window.location.href = "index.html";
             } catch (error) {
                 console.error("Erreur de connexion:", error);
@@ -116,7 +129,7 @@
             }
         });
 
-        // Mot de passe oublié -> envoi d'un email de réinitialisation
+        // Mot de passe oublié -> envoi d'un email de réinitialisation avec retour vers l'application
         document.getElementById('btn-mdp-oublie').addEventListener('click', async () => {
             const emailActuel = document.getElementById('in-email').value.trim();
             const res = await formulaire({
@@ -130,72 +143,12 @@
             if (!res || !res.email.trim()) return;
             try {
                 await sendPasswordResetEmail(auth, res.email.trim());
-                toast(`Un e-mail de réinitialisation a été envoyé à ${res.email.trim()}.`, 'success', 5000);
+                toast(`E-mail envoyé à ${res.email.trim()} (vérifiez aussi vos spams) !`, 'success', 5500);
             } catch (err) {
                 console.error(err);
                 toast("Impossible d'envoyer l'e-mail : vérifiez l'adresse saisie.", 'error');
             }
         });
-
-        // Connexion par lien envoyé par mail (Passwordless)
-        formMagic.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('in-email-magic').value.trim();
-            if (!email) return toast("Veuillez saisir votre adresse e-mail.", 'error');
-
-            const bouton = document.getElementById('btn-magic');
-            chargement(bouton, true, 'Envoi du lien…');
-            try {
-                const actionCodeSettings = {
-                    url: window.location.origin + window.location.pathname,
-                    handleCodeInApp: true
-                };
-                await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-                window.localStorage.setItem('chalosseEmailForSignIn', email);
-                toast(`Lien envoyé à ${email} ! Consultez votre boîte mail.`, 'success', 6000);
-            } catch (err) {
-                console.error(err);
-                toast("Envoi impossible (" + (err.code || err.message) + "). Utilisez la connexion avec mot de passe.", 'error', 5000);
-            } finally {
-                chargement(bouton, false);
-            }
-        });
-
-        // Retour depuis le lien reçu par e-mail
-        if (isSignInWithEmailLink(auth, window.location.href)) {
-            (async () => {
-                let email = window.localStorage.getItem('chalosseEmailForSignIn');
-                if (!email) {
-                    const res = await formulaire({
-                        titre: 'Confirmez votre e-mail',
-                        texte: 'Saisissez votre adresse e-mail pour finaliser la connexion.',
-                        ok: 'Valider',
-                        champs: [{ nom: 'email', label: 'Adresse e-mail', type: 'email', placeholder: 'vous@exemple.fr' }]
-                    });
-                    email = res?.email?.trim();
-                }
-                if (!email) return;
-                try {
-                    const { user } = await signInWithEmailLink(auth, email, window.location.href);
-                    window.localStorage.removeItem('chalosseEmailForSignIn');
-                    const snap = await getDoc(doc(db, "utilisateurs", user.uid));
-                    if (!snap.exists()) {
-                        const pseudo = email.split('@')[0];
-                        await setDoc(doc(db, "utilisateurs", user.uid), {
-                            prenom: pseudo.charAt(0).toUpperCase() + pseudo.slice(1),
-                            nom: '',
-                            email: email,
-                            role: 'utilisateur'
-                        });
-                    }
-                    flash("Connexion par mail réussie !");
-                    window.location.href = "index.html";
-                } catch (err) {
-                    console.error(err);
-                    toast("Ce lien de connexion a expiré ou n'est plus valide.", 'error');
-                }
-            })();
-        }
     </script>
 </body>
 </html>

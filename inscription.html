@@ -12,10 +12,11 @@
 </head>
 <body class="auth-page">
 
-    <div class="auth-card">
+    <!-- Étape 1 : Formulaire d'inscription -->
+    <div class="auth-card" id="carte-formulaire">
         <img src="chalosse.webp" alt="Logo FC Chalosse" class="auth-logo">
         <h1>Créer un compte</h1>
-        <p class="muted">Inscrivez-vous avec votre adresse e-mail.</p>
+        <p class="muted">Rejoignez l'application du FC Chalosse.</p>
 
         <form id="form-inscription">
             <div class="form-row">
@@ -37,22 +38,240 @@
                 <button type="button" class="pw-toggle" id="btn-toggle-pw" title="Afficher le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
             </div>
 
-            <button class="btn" type="submit" id="btn-inscrire">✉️ S'inscrire avec cet e-mail</button>
+            <button class="btn" type="submit" id="btn-inscrire">S'inscrire</button>
         </form>
 
         <a href="connexion.html" class="lien">Déjà un compte ? <strong>Se connecter</strong></a>
     </div>
 
+    <!-- Étape 2 : Attente de confirmation du mail + redirection automatique -->
+    <div class="auth-card hidden" id="carte-confirmation">
+        <div style="font-size: 3.2rem; line-height: 1; margin-bottom: 10px;">📩</div>
+        <h1>Confirmez votre e-mail</h1>
+        <p class="muted" style="margin-bottom: 10px;">
+            Un e-mail de confirmation a été envoyé à<br>
+            <strong id="email-cible" style="color: var(--texte);"></strong>
+        </p>
+
+        <div id="alerte-mail" class="info-admin" style="display: block; text-align: left; font-size: .83rem; margin-bottom: 12px;">
+            💡 <strong>Vous ne voyez pas le mail ?</strong><br>
+            Vérifiez vos <strong>Spams / Courriers indésirables</strong> (expéditeur : <code>noreply@chalosse-d1ef5.firebaseapp.com</code>). La réception peut prendre 1 à 2 minutes.
+        </div>
+
+        <div class="account-info-item" style="justify-content: center; gap: 10px; margin: 14px 0; text-align: center;">
+            <span class="spinner" style="color: var(--jaune);"></span>
+            <span style="font-size: .88rem; font-weight: 600;">Détection automatique du clic activée…</span>
+        </div>
+
+        <p class="muted" style="font-size: .82rem; margin-bottom: 16px;">
+            Dès que vous cliquez sur le lien dans le mail, cette page vous redirige <strong>automatiquement</strong> vers l'application.
+        </p>
+
+        <button class="btn" type="button" id="btn-deja-confirme">✅ J'ai cliqué sur le lien dans le mail</button>
+        <button class="btn-retour" type="button" id="btn-renvoyer-mail">🔄 Renvoyer l'e-mail de confirmation</button>
+        <button class="btn-retour" type="button" id="btn-continuer-sans-mail" style="margin-top: 8px;">Accéder directement à l'application →</button>
+        <button class="btn-link" type="button" id="btn-changer-compte" style="margin-top: 12px;">Utiliser une autre adresse e-mail</button>
+    </div>
+
     <script type="module">
-        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { createUserWithEmailAndPassword, sendEmailVerification } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import {
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            deleteUser,
+            sendEmailVerification,
+            sendPasswordResetEmail,
+            onAuthStateChanged,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth } from "./js/firebase.js";
-        import { toast, flash, chargement } from "./js/ui.js";
+        import { toast, flash, ouvrirModal, chargement, echapper } from "./js/ui.js";
+
+        auth.languageCode = 'fr';
 
         const inPw = document.getElementById('in-password');
         document.getElementById('btn-toggle-pw').addEventListener('click', () => {
             inPw.type = inPw.type === 'text' ? 'password' : 'text';
         });
+
+        let timerVerification = null;
+        let inscriptionEnCours = false;
+
+        // Envoi direct sans actionCodeSettings pour éviter tout rejet de domaine (127.0.0.1, github.io, etc.)
+        async function envoyerMailConfirmation(user) {
+            await sendEmailVerification(user);
+        }
+
+        async function finaliserCreationCompte(user, prenom, nom, email) {
+            await setDoc(doc(db, "utilisateurs", user.uid), {
+                prenom: prenom,
+                nom: nom,
+                email: email,
+                role: "utilisateur",
+                attente_confirmation_mail: true
+            });
+
+            passerEnAttenteConfirmation(user);
+
+            try {
+                await envoyerMailConfirmation(user);
+                toast(`E-mail de confirmation envoyé à ${email} !`);
+            } catch (errMail) {
+                console.warn("Avertissement envoi mail :", errMail);
+                const alerte = document.getElementById('alerte-mail');
+                if (errMail.code === 'auth/too-many-requests') {
+                    alerte.innerHTML = `⚠️ <strong>Limite anti-spam Firebase atteinte</strong> pour <b>${echapper(email)}</b> (plusieurs essais consécutifs).<br>Utilisez le précédent mail reçu (vérifiez vos spams) ou cliquez sur <b>« Accéder directement à l'application »</b> ci-dessous.`;
+                    toast("Plusieurs essais récents : vérifiez vos spams ou accédez directement à l'application.", 'info', 6000);
+                } else {
+                    alerte.innerHTML = `⚠️ Impossible d'envoyer l'e-mail (${echapper(errMail.code || errMail.message)}). Vous pouvez accéder directement à l'application ci-dessous.`;
+                }
+            }
+        }
+
+        function passerEnAttenteConfirmation(user) {
+            document.getElementById('carte-formulaire').classList.add('hidden');
+            document.getElementById('carte-confirmation').classList.remove('hidden');
+            document.getElementById('email-cible').textContent = user.email || '';
+
+            if (timerVerification) clearInterval(timerVerification);
+            timerVerification = setInterval(() => verifierStatutMail(false), 2000);
+        }
+
+        async function verifierStatutMail(afficherMessageSiNonVerifie = false) {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                await user.reload();
+                if (auth.currentUser.emailVerified) {
+                    if (timerVerification) clearInterval(timerVerification);
+                    await updateDoc(doc(db, "utilisateurs", user.uid), {
+                        attente_confirmation_mail: false
+                    }).catch(() => {});
+                    flash("Adresse e-mail confirmée ! Bienvenue au FC Chalosse.");
+                    window.location.href = "index.html";
+                } else if (afficherMessageSiNonVerifie) {
+                    toast("Firebase indique que le lien n'a pas encore été cliqué. Vérifiez vos spams ou cliquez sur « Accéder directement à l'application ».", 'info', 5000);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && !document.getElementById('carte-confirmation').classList.contains('hidden')) {
+                verifierStatutMail(false);
+            }
+        });
+        window.addEventListener('focus', () => {
+            if (!document.getElementById('carte-confirmation').classList.contains('hidden')) {
+                verifierStatutMail(false);
+            }
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (inscriptionEnCours) return;
+            const params = new URLSearchParams(window.location.search);
+            if (user && params.get('attente') === '1') {
+                if (user.emailVerified) {
+                    window.location.href = "index.html";
+                } else {
+                    passerEnAttenteConfirmation(user);
+                }
+            }
+        });
+
+        // Tente de purger un ancien compte Firebase Auth supprimé par l'admin puis de le recréer
+        async function tenterRecreationCompteSupprime(email, nouveauPassword, motDePasseConnexion, prenom, nom) {
+            let cred;
+            try {
+                cred = await signInWithEmailAndPassword(auth, email, motDePasseConnexion);
+            } catch (errAuth) {
+                throw { type: 'mot_de_passe_different', original: errAuth };
+            }
+
+            const ancienUser = cred.user;
+            const snap = await getDoc(doc(db, "utilisateurs", ancienUser.uid));
+
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.attente_confirmation_mail && !ancienUser.emailVerified) {
+                    passerEnAttenteConfirmation(ancienUser);
+                    try {
+                        await envoyerMailConfirmation(ancienUser);
+                        toast("Un nouvel e-mail de confirmation vient d'être envoyé !", 'success', 5000);
+                    } catch (e) {
+                        toast("Ce compte attend votre confirmation. Vérifiez vos spams ou cliquez sur « Accéder directement à l'application ».", 'info', 5500);
+                    }
+                    return 'attente';
+                }
+                await signOut(auth);
+                return 'existe_vraiment';
+            }
+
+            // Le document Firestore n'existe plus : le compte avait été supprimé par l'admin !
+            await deleteUser(ancienUser);
+            const { user: nouveauUser } = await createUserWithEmailAndPassword(auth, email, nouveauPassword);
+            await finaliserCreationCompte(nouveauUser, prenom, nom, email);
+            return 'recree';
+        }
+
+        function modaleDebloquerEmailSupprime(email, nouveauPassword, prenom, nom) {
+            ouvrirModal((boite, fermer) => {
+                boite.innerHTML = `
+                    <h3 class="modal-title">♻️ Réutiliser cette adresse e-mail</h3>
+                    <p class="modal-text">
+                        L'adresse <strong>${echapper(email)}</strong> est déjà enregistrée dans Firebase (ancien compte supprimé ou existant).
+                    </p>
+                    <form id="form-debloquer" style="margin-top: 12px;">
+                        <label for="ancien-mdp" style="margin-top: 0;">Ancien mot de passe de cet e-mail</label>
+                        <input type="password" id="ancien-mdp" placeholder="Saisissez l'ancien mot de passe" required>
+                        <p class="modal-help">
+                            Si le compte avait été supprimé par l'admin, il sera immédiatement recréé avec vos nouvelles informations.
+                        </p>
+                        <div class="modal-actions">
+                            <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-debloq">Annuler</button>
+                            <button type="submit" class="btn-modal btn-modal-ok" id="btn-valider-debloq">Recréer le compte</button>
+                        </div>
+                    </form>
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center;">
+                        <button type="button" class="btn-link" id="btn-reset-ancien">Ancien mot de passe oublié ? Recevoir un mail de réinitialisation</button>
+                    </div>
+                `;
+
+                boite.querySelector('#btn-annuler-debloq').onclick = () => fermer(null);
+
+                boite.querySelector('#form-debloquer').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const ancienMdp = boite.querySelector('#ancien-mdp').value;
+                    const btnOk = boite.querySelector('#btn-valider-debloq');
+                    chargement(btnOk, true, 'Vérification…');
+                    try {
+                        inscriptionEnCours = true;
+                        const statut = await tenterRecreationCompteSupprime(email, nouveauPassword, ancienMdp, prenom, nom);
+                        fermer(statut);
+                        if (statut === 'existe_vraiment') {
+                            toast("Ce compte est déjà actif. Connectez-vous depuis la page Connexion.", 'error', 5000);
+                        }
+                    } catch (err) {
+                        toast("Ancien mot de passe incorrect. Utilisez le lien de réinitialisation ci-dessous.", 'error', 5000);
+                    } finally {
+                        inscriptionEnCours = false;
+                        chargement(btnOk, false);
+                    }
+                });
+
+                boite.querySelector('#btn-reset-ancien').onclick = async () => {
+                    try {
+                        localStorage.setItem('chalosse_recreation_profil', JSON.stringify({ prenom, nom, email }));
+                        await sendPasswordResetEmail(auth, email);
+                        fermer('reset');
+                        toast(`E-mail envoyé à ${email}. Pensez à vérifier vos spams !`, 'info', 7000);
+                    } catch (err) {
+                        toast("Impossible d'envoyer l'e-mail : " + err.message, 'error');
+                    }
+                };
+            });
+        }
 
         document.getElementById('form-inscription').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -65,31 +284,76 @@
 
             const bouton = document.getElementById('btn-inscrire');
             chargement(bouton, true, 'Création du compte…');
+            inscriptionEnCours = true;
             try {
-                // 1. Création du compte Firebase Auth (email / mot de passe)
                 const { user } = await createUserWithEmailAndPassword(auth, email, password);
-
-                // 2. Envoi de l'e-mail de confirmation
-                sendEmailVerification(user).catch(() => {});
-
-                // 3. Fiche utilisateur dans Firestore
-                await setDoc(doc(db, "utilisateurs", user.uid), {
-                    prenom: prenom,
-                    nom: nom,
-                    email: email,
-                    role: "utilisateur"
-                });
-
-                flash(`Compte créé avec ${email} ! Bienvenue au FC Chalosse.`);
-                window.location.href = "index.html";
+                await finaliserCreationCompte(user, prenom, nom, email);
             } catch (error) {
-                console.error("Erreur d'inscription:", error);
-                if (error.code === 'auth/email-already-in-use') toast("Cette adresse email est déjà utilisée.", 'error');
-                else if (error.code === 'auth/weak-password') toast("Le mot de passe doit faire au moins 6 caractères.", 'error');
-                else if (error.code === 'auth/invalid-email') toast("L'adresse email n'est pas valide.", 'error');
-                else toast("Erreur lors de l'inscription : " + error.message, 'error');
+                if (error.code === 'auth/email-already-in-use') {
+                    try {
+                        const statut = await tenterRecreationCompteSupprime(email, password, password, prenom, nom);
+                        if (statut === 'existe_vraiment') {
+                            toast("Cette adresse e-mail est déjà utilisée par un compte actif.", 'error');
+                        }
+                    } catch (err) {
+                        if (err.type === 'mot_de_passe_different') {
+                            modaleDebloquerEmailSupprime(email, password, prenom, nom);
+                        } else {
+                            toast("Erreur : " + (err.message || err), 'error');
+                        }
+                    }
+                } else if (error.code === 'auth/weak-password') {
+                    toast("Le mot de passe doit faire au moins 6 caractères.", 'error');
+                } else if (error.code === 'auth/invalid-email') {
+                    toast("L'adresse email n'est pas valide.", 'error');
+                } else {
+                    toast("Erreur lors de l'inscription : " + error.message, 'error');
+                }
+            } finally {
+                inscriptionEnCours = false;
                 chargement(bouton, false);
             }
+        });
+
+        document.getElementById('btn-deja-confirme').addEventListener('click', () => verifierStatutMail(true));
+
+        document.getElementById('btn-renvoyer-mail').addEventListener('click', async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+            const btn = document.getElementById('btn-renvoyer-mail');
+            chargement(btn, true, 'Envoi en cours…');
+            try {
+                await envoyerMailConfirmation(user);
+                toast("Nouvel e-mail envoyé ! Vérifiez aussi votre dossier Spams / Indésirables.", 'success', 5500);
+            } catch (e) {
+                if (e.code === 'auth/too-many-requests') {
+                    toast("Firebase bloque temporairement le renvoi (trop d'essais rapprochés). Vérifiez vos spams ou cliquez sur « Accéder directement à l'application ».", 'info', 6500);
+                } else {
+                    toast("Erreur : " + e.message, 'error');
+                }
+            } finally {
+                chargement(btn, false);
+            }
+        });
+
+        // Permet de ne jamais rester bloqué si l'opérateur mail filtre ou retarde les mails Firebase
+        document.getElementById('btn-continuer-sans-mail').addEventListener('click', async () => {
+            if (timerVerification) clearInterval(timerVerification);
+            const user = auth.currentUser;
+            if (user) {
+                await updateDoc(doc(db, "utilisateurs", user.uid), {
+                    attente_confirmation_mail: false
+                }).catch(() => {});
+            }
+            flash("Bienvenue au FC Chalosse !");
+            window.location.href = "index.html";
+        });
+
+        document.getElementById('btn-changer-compte').addEventListener('click', async () => {
+            if (timerVerification) clearInterval(timerVerification);
+            await signOut(auth).catch(() => {});
+            document.getElementById('carte-confirmation').classList.add('hidden');
+            document.getElementById('carte-formulaire').classList.remove('hidden');
         });
     </script>
 </body>

@@ -1,7 +1,7 @@
 // Navigation responsive : barre latérale (ordinateur) + barre d'onglets en bas (mobile/tablette)
-import { onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { onAuthStateChanged, signOut, sendPasswordResetEmail, deleteUser } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { auth, chargerProfil } from "./firebase.js";
-import { afficherFlash, confirmer, ouvrirModal, toast, initiales, echapper } from "./ui.js";
+import { afficherFlash, flash, confirmer, ouvrirModal, toast, initiales, echapper } from "./ui.js";
 
 const SVG = {
     home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
@@ -174,8 +174,20 @@ onAuthStateChanged(auth, async (user) => {
     }
     emails.forEach(e => e.textContent = user.email || '');
     let profil = null;
-    try { profil = await chargerProfil(user.uid); } catch (e) { console.error(e); }
+    let erreurProfil = false;
+    try { profil = await chargerProfil(user.uid); } catch (e) { console.error(e); erreurProfil = true; }
     profilCourant = profil;
+    if (!profil && !erreurProfil) {
+        // Si le compte a été supprimé par un administrateur dans Firestore, on purge aussi Firebase Auth
+        await deleteUser(user).catch(() => signOut(auth));
+        flash("Ce compte a été supprimé par un administrateur.", 'info');
+        window.location.href = 'connexion.html';
+        return;
+    }
+    if (profil?.attente_confirmation_mail && !user.emailVerified) {
+        window.location.href = 'inscription.html?attente=1';
+        return;
+    }
     const nom = profil?.prenom ? `${profil.prenom} ${profil.nom || ''}`.trim() : (user.email || 'Utilisateur').split('@')[0];
     noms.forEach(e => e.textContent = nom);
     avatars.forEach(e => e.textContent = profil?.prenom ? initiales(profil.prenom, profil.nom) : nom.charAt(0).toUpperCase());
