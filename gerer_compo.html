@@ -2,225 +2,199 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
     <title>Gérer les Compos - FC Chalosse</title>
-    
     <link rel="apple-touch-icon" href="chalosse.webp">
     <link rel="icon" href="chalosse.webp">
-
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; margin: 0; }
-        .container { max-width: 600px; margin: auto; padding-bottom: 30px; }
-        
-        h1 { display: flex; align-items: center; justify-content: center; gap: 12px; background-color: #1a1a1a; color: #ffcc00; padding: 15px; border-radius: 12px; border: 2px solid #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; margin-bottom: 20px; font-size: 1.5em; }
-        .logo-header { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: white; border: 2px solid #ffcc00; }
-
-        .card { background: #fffce6; border: 2px solid #1a1a1a; padding: 15px; border-radius: 12px; text-align: left; margin-bottom: 15px; }
-
-        .titre-equipe { font-weight: bold; margin-bottom: 5px; font-size: 1.1em; }
-        .select-match { width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #1a1a1a; font-size: 1em; font-weight: bold; background: white; margin-bottom: 15px; cursor: pointer; }
-        
-        .select-premiere { border-color: #0056b3; background-color: #e6f0ff; }
-        .select-reserve { border-color: #28a745; background-color: #e6ffe6; }
-
-        .joueur-ligne { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ccc; font-size: 1.1em; cursor: pointer; }
-        .joueur-ligne:last-child { border-bottom: none; }
-        .joueur-nom { font-weight: bold; color: #1a1a1a; }
-        .stats-badge { font-size: 0.8em; color: #666; font-weight: normal; margin-left: 8px; }
-        
-        .checkbox-compo { width: 24px; height: 24px; cursor: pointer; accent-color: #1a1a1a; }
-
-        .btn-valider { background: #28a745; color: white; border: 2px solid #1a1a1a; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1.1em; margin-top: 20px; text-transform: uppercase; }
-        .btn-retour { display: inline-block; margin-top: 20px; background: #1a1a1a; color: #ffcc00; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 2px solid #1a1a1a; }
-        
-        #zone-joueurs { display: none; }
-    </style>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
 </head>
-<body>
+<body class="app">
 
-    <div class="container">
-        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> Gérer les Compos</h1>
-        
+    <main class="container">
+        <header class="page-header">
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> Compositions</h1>
+            <p>Choisissez un match puis cochez les joueurs convoqués.</p>
+        </header>
+
         <div class="card">
-            <div class="titre-equipe" style="color: #0056b3;">🔵 Équipe Première</div>
-            <select id="select-premiere" class="select-match select-premiere" onchange="changerMatch('premiere')">
-                <option value="">-- Choisir un match de la Première --</option>
-            </select>
-
-            <div class="titre-equipe" style="color: #28a745; margin-top: 10px;">🟢 Équipe Réserve</div>
-            <select id="select-reserve" class="select-match select-reserve" onchange="changerMatch('reserve')">
-                <option value="">-- Choisir un match de la Réserve --</option>
-            </select>
-        </div>
-
-        <div id="zone-joueurs">
-            <div class="card" id="liste-joueurs">
-                <p>Chargement des joueurs...</p>
+            <div class="form-row">
+                <div>
+                    <label for="select-premiere" style="margin-top:0">🔵 Équipe Première</label>
+                    <select id="select-premiere" class="team-select-premiere">
+                        <option value="">Chargement…</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="select-reserve">🟢 Équipe Réserve</label>
+                    <select id="select-reserve" class="team-select-reserve">
+                        <option value="">Chargement…</option>
+                    </select>
+                </div>
             </div>
-            <button class="btn-valider" id="btn-sauvegarder" onclick="sauvegarderCompo()">💾 Valider la composition</button>
         </div>
 
-        <a href="index.html" class="btn-retour">🔙 Retour à l'accueil</a>
-    </div>
+        <div id="zone-joueurs" class="hidden">
+            <h2 class="titre-section">Joueurs <span class="count">triés par nombre d'apparitions</span></h2>
+            <div class="search">
+                <input type="search" id="recherche" placeholder="Filtrer les joueurs…" autocomplete="off">
+            </div>
+            <div class="compo-grid" id="liste-joueurs"></div>
+
+            <div class="sticky-actions">
+                <span class="sticky-info"><strong id="nb-selection">0</strong> sélectionné(s)</span>
+                <button class="btn-valider" id="btn-sauvegarder">💾 Valider la composition</button>
+            </div>
+        </div>
+    </main>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
-            authDomain: "chalosse-d1ef5.firebaseapp.com",
-            projectId: "chalosse-d1ef5",
-            storageBucket: "chalosse-d1ef5.firebasestorage.app",
-            messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { toast, flash, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { trierParDate } from "./js/matchs.js";
 
         let matchActifId = null;
         let listeTousLesJoueurs = [];
         let compteursApparitions = {};
 
+        const selPremiere = document.getElementById('select-premiere');
+        const selReserve = document.getElementById('select-reserve');
+
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
-                if (docSnap.exists() && docSnap.data().role === "admin") {
-                    initialiserPage();
-                } else {
-                    alert("Accès refusé. Réservé aux administrateurs.");
-                    window.location.href = "index.html";
-                }
+            if (!user) { window.location.href = "connexion.html"; return; }
+            const profil = await chargerProfil(user.uid).catch(() => null);
+            if (profil?.role === "admin") {
+                initialiserPage();
             } else {
-                window.location.href = "connexion.html";
+                flash("Accès réservé aux administrateurs.", 'error');
+                window.location.href = "index.html";
             }
         });
 
         async function initialiserPage() {
             try {
-                // On vide les tableaux pour éviter les doublons si la page se recharge
                 listeTousLesJoueurs = [];
                 compteursApparitions = {};
 
-                // 1. Récupérer uniquement les vrais JOUEURS ou ADMINS
+                // 1. Uniquement les JOUEURS ou ADMINS
                 const usersSnap = await getDocs(collection(db, "utilisateurs"));
                 usersSnap.forEach(u => {
-                    let data = u.data();
-                    // 🔒 MODIFICATION ICI : On vérifie que le rôle est soit "joueur" soit "admin"
+                    const data = u.data();
                     if (data.prenom && (data.role === "joueur" || data.role === "admin")) {
                         listeTousLesJoueurs.push({ id: u.id, nom: `${data.prenom} ${data.nom}` });
                         compteursApparitions[u.id] = { premiere: 0, reserve: 0 };
                     }
                 });
 
-                // 2. Récupérer les matchs et calculer les anciennes compos
+                // 2. Matchs + calcul des anciennes compos
                 const matchsSnap = await getDocs(collection(db, "matchs"));
-                let optionsPremiere = '<option value="">-- Choisir un match de la Première --</option>';
-                let optionsReserve = '<option value="">-- Choisir un match de la Réserve --</option>';
+                const matchs = [];
+                matchsSnap.forEach(d => matchs.push({ id: d.id, data: d.data() }));
+                trierParDate(matchs);
 
-                matchsSnap.forEach(doc => {
-                    let data = doc.data();
-                    let dateTexte = data.date ? `(${data.date})` : "";
-                    let optionHtml = `<option value="${doc.id}">${data.adversaire} ${dateTexte}</option>`;
-                    
-                    let typeEquipe = data.equipe_type === "premiere" ? "premiere" : "reserve";
+                let optionsPremiere = '<option value="">— Choisir un match de la Première —</option>';
+                let optionsReserve = '<option value="">— Choisir un match de la Réserve —</option>';
 
-                    if (typeEquipe === "premiere") optionsPremiere += optionHtml;
-                    else optionsReserve += optionHtml;
+                matchs.forEach(({ id, data }) => {
+                    const typeEquipe = data.equipe_type === "premiere" ? "premiere" : "reserve";
+                    const option = `<option value="${id}">${echapper(data.adversaire)} · ${echapper(formaterDate(data.date))}</option>`;
+                    if (typeEquipe === "premiere") optionsPremiere += option;
+                    else optionsReserve += option;
 
-                    if (data.compo && Array.isArray(data.compo)) {
+                    if (Array.isArray(data.compo)) {
                         data.compo.forEach(joueurId => {
-                            if (compteursApparitions[joueurId]) {
-                                compteursApparitions[joueurId][typeEquipe]++;
-                            }
+                            if (compteursApparitions[joueurId]) compteursApparitions[joueurId][typeEquipe]++;
                         });
                     }
                 });
 
-                document.getElementById('select-premiere').innerHTML = optionsPremiere;
-                document.getElementById('select-reserve').innerHTML = optionsReserve;
-
+                const valP = selPremiere.value, valR = selReserve.value;
+                selPremiere.innerHTML = optionsPremiere;
+                selReserve.innerHTML = optionsReserve;
+                selPremiere.value = valP;
+                selReserve.value = valR;
             } catch (error) {
                 console.error("Erreur de chargement :", error);
+                toast("Erreur de chargement des données.", 'error');
             }
         }
 
-        window.changerMatch = async function(equipeSelectionnee) {
+        async function changerMatch(equipeSelectionnee) {
             if (equipeSelectionnee === 'premiere') {
-                document.getElementById('select-reserve').value = "";
-                matchActifId = document.getElementById('select-premiere').value;
+                selReserve.value = "";
+                matchActifId = selPremiere.value;
             } else {
-                document.getElementById('select-premiere').value = "";
-                matchActifId = document.getElementById('select-reserve').value;
+                selPremiere.value = "";
+                matchActifId = selReserve.value;
             }
 
-            if (!matchActifId) {
-                document.getElementById('zone-joueurs').style.display = 'none';
-                return;
-            }
+            const zone = document.getElementById('zone-joueurs');
+            if (!matchActifId) { zone.classList.add('hidden'); return; }
 
             listeTousLesJoueurs.sort((a, b) => {
-                let nbMatchsA = compteursApparitions[a.id][equipeSelectionnee];
-                let nbMatchsB = compteursApparitions[b.id][equipeSelectionnee];
-                if (nbMatchsB !== nbMatchsA) return nbMatchsB - nbMatchsA; 
+                const nbA = compteursApparitions[a.id][equipeSelectionnee];
+                const nbB = compteursApparitions[b.id][equipeSelectionnee];
+                if (nbB !== nbA) return nbB - nbA;
                 return a.nom.localeCompare(b.nom);
             });
 
             const matchDoc = await getDoc(doc(db, "matchs", matchActifId));
-            let compoEnregistree = [];
-            if (matchDoc.exists() && matchDoc.data().compo) {
-                compoEnregistree = matchDoc.data().compo;
-            }
+            const compoEnregistree = (matchDoc.exists() && matchDoc.data().compo) || [];
 
-            let htmlJoueurs = "";
-            listeTousLesJoueurs.forEach(joueur => {
-                let estCoche = compoEnregistree.includes(joueur.id) ? "checked" : "";
-                let nbMatchs = compteursApparitions[joueur.id][equipeSelectionnee];
-                let badgeStats = nbMatchs > 0 ? `<span class="stats-badge">(${nbMatchs} matchs)</span>` : "";
-
-                htmlJoueurs += `
-                    <label class="joueur-ligne">
+            document.getElementById('liste-joueurs').innerHTML = listeTousLesJoueurs.map(joueur => {
+                const coche = compoEnregistree.includes(joueur.id) ? "checked" : "";
+                const nb = compteursApparitions[joueur.id][equipeSelectionnee];
+                const badge = nb > 0 ? `<span class="stats-badge">${nb} match${nb > 1 ? 's' : ''}</span>` : "";
+                return `
+                    <label class="joueur-ligne" data-nom="${echapper(joueur.nom.toLowerCase())}">
                         <div>
-                            <span class="joueur-nom">${joueur.nom}</span>
-                            ${badgeStats}
+                            <span class="joueur-nom">${echapper(joueur.nom)}</span>
+                            ${badge}
                         </div>
-                        <input type="checkbox" class="checkbox-compo" value="${joueur.id}" ${estCoche}>
-                    </label>
-                `;
+                        <input type="checkbox" class="checkbox-compo" value="${joueur.id}" ${coche}>
+                    </label>`;
+            }).join('');
+
+            document.getElementById('recherche').value = '';
+            majCompteur();
+            zone.classList.remove('hidden');
+        }
+
+        function majCompteur() {
+            document.getElementById('nb-selection').textContent = document.querySelectorAll('.checkbox-compo:checked').length;
+        }
+
+        selPremiere.addEventListener('change', () => changerMatch('premiere'));
+        selReserve.addEventListener('change', () => changerMatch('reserve'));
+        document.getElementById('liste-joueurs').addEventListener('change', majCompteur);
+        document.getElementById('recherche').addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            document.querySelectorAll('#liste-joueurs .joueur-ligne').forEach(l => {
+                l.classList.toggle('hidden', !l.dataset.nom.includes(q));
             });
+        });
 
-            document.getElementById('liste-joueurs').innerHTML = htmlJoueurs;
-            document.getElementById('zone-joueurs').style.display = 'block';
-        };
-
-        window.sauvegarderCompo = async function() {
+        document.getElementById('btn-sauvegarder').addEventListener('click', async () => {
             if (!matchActifId) return;
-
             const bouton = document.getElementById('btn-sauvegarder');
-            bouton.innerText = "⏳ Enregistrement...";
+            chargement(bouton, true);
 
-            const casesCochees = document.querySelectorAll('.checkbox-compo:checked');
-            let nouvelleCompo = [];
-            casesCochees.forEach(caseInput => {
-                nouvelleCompo.push(caseInput.value);
-            });
-
+            const nouvelleCompo = [...document.querySelectorAll('.checkbox-compo:checked')].map(c => c.value);
             try {
-                await updateDoc(doc(db, "matchs", matchActifId), {
-                    compo: nouvelleCompo
-                });
-                alert(`✅ Composition enregistrée avec succès ! (${nouvelleCompo.length} joueurs sélectionnés)`);
-                initialiserPage(); 
+                await updateDoc(doc(db, "matchs", matchActifId), { compo: nouvelleCompo });
+                toast(`Composition enregistrée (${nouvelleCompo.length} joueurs)`);
+                await initialiserPage();
             } catch (error) {
                 console.error("Erreur de sauvegarde :", error);
-                alert("Une erreur est survenue lors de l'enregistrement.");
+                toast("Une erreur est survenue lors de l'enregistrement.", 'error');
             } finally {
-                bouton.innerText = "💾 Valider la composition";
+                chargement(bouton, false);
             }
-        };
+        });
     </script>
 </body>
 </html>

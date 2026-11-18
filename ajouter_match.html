@@ -2,77 +2,82 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
     <title>Ajouter un match - FC Chalosse</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input, select { width: 100%; margin: 10px 0; padding: 10px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
-        .btn { background: #28a745; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
-    </style>
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
 </head>
-<body>
+<body class="app">
 
-    <div class="card">
-        <h2>📅 Nouveau Match</h2>
-        
-        <label style="text-align: left; display: block;">Équipe concernée :</label>
-        <select id="equipe_type">
-            <option value="premiere">🔵 Équipe Première</option>
-            <option value="reserve">🟢 Équipe Réserve</option>
-        </select>
+    <main class="container narrow">
+        <header class="page-header">
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> Nouveau match</h1>
+            <p>Ajoutez un match au calendrier de la Première ou de la Réserve.</p>
+        </header>
 
-        <label style="text-align: left; display: block; margin-top: 10px;">Nom de l'adversaire :</label>
-        <input type="text" id="adversaire" placeholder="Ex: FC Doazit">
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Date du match :</label>
-        <input type="date" id="date">
-        
-        <label style="text-align: left; display: block; margin-top: 10px;">Lien logo adverse (Optionnel) :</label>
-        <input type="url" id="logo" placeholder="https://...">
-        
-        <button class="btn" onclick="creerMatch()">Ajouter le match</button>
-        <br>
-        <a href="index.html" class="btn-retour">Annuler</a>
-    </div>
+        <form class="card" id="form-match">
+            <label for="equipe_type" style="margin-top:0">Équipe concernée</label>
+            <select id="equipe_type">
+                <option value="premiere">🔵 Équipe Première</option>
+                <option value="reserve">🟢 Équipe Réserve</option>
+            </select>
+
+            <label for="adversaire">Nom de l'adversaire</label>
+            <input type="text" id="adversaire" placeholder="Ex : FC Doazit" required>
+
+            <label for="date">Date du match</label>
+            <input type="date" id="date" required>
+
+            <label for="logo">Lien du logo adverse <span class="muted">(optionnel)</span></label>
+            <input type="url" id="logo" placeholder="https://…">
+
+            <button class="btn" type="submit" id="btn-creer">Ajouter le match</button>
+            <a href="calendrier.html" class="btn-retour">Annuler</a>
+        </form>
+    </main>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { toast, flash, chargement } from "./js/ui.js";
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
-            authDomain: "chalosse-d1ef5.firebaseapp.com",
-            projectId: "chalosse-d1ef5",
-            storageBucket: "chalosse-d1ef5.firebasestorage.app",
-            messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
-        };
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) { window.location.href = "connexion.html"; return; }
+            const profil = await chargerProfil(user.uid).catch(() => null);
+            if (profil?.role !== "admin") {
+                flash("Accès réservé aux administrateurs.", 'error');
+                window.location.href = "index.html";
+            }
+        });
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        document.getElementById('form-match').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const adversaire = document.getElementById('adversaire').value.trim();
+            const date = document.getElementById('date').value;
+            if (!adversaire || !date) return toast("Remplissez l'adversaire et la date.", 'error');
 
-        window.creerMatch = async function() {
-            const equipeType = document.getElementById('equipe_type').value;
-            const adversaireVal = document.getElementById('adversaire').value;
-            const dateVal = document.getElementById('date').value;
-            const logoVal = document.getElementById('logo').value;
-
-            if(adversaireVal === "" || dateVal === "") return alert("Remplis l'adversaire et la date !");
-
+            const bouton = document.getElementById('btn-creer');
+            chargement(bouton, true);
             try {
                 await addDoc(collection(db, "matchs"), {
-                    equipe_type: equipeType, // "premiere" ou "reserve"
-                    adversaire: adversaireVal,
-                    date: dateVal,
-                    logo: logoVal,
-                    compo: [] // On initialise une liste de joueurs vide pour ce match
+                    equipe_type: document.getElementById('equipe_type').value, // "premiere" ou "reserve"
+                    adversaire: adversaire,
+                    date: date,
+                    logo: document.getElementById('logo').value.trim(),
+                    compo: [] // Liste de joueurs vide pour ce match
                 });
-                alert("✅ Match ajouté !");
-                window.location.href = "index.html";
-            } catch (e) { alert("Erreur : " + e.message); }
-        }
+                flash("Match ajouté au calendrier !");
+                window.location.href = "calendrier.html";
+            } catch (err) {
+                toast("Opération bloquée : " + err.message, 'error', 6000);
+                chargement(bouton, false);
+            }
+        });
     </script>
 </body>
 </html>

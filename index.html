@@ -2,226 +2,121 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
     <title>FC Chalosse - Accueil</title>
 
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="FC Chalosse">
-    
+
     <link rel="apple-touch-icon" href="chalosse.webp">
     <link rel="icon" href="chalosse.webp">
     <link rel="manifest" href="manifest.json">
-
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; padding-bottom: 90px; text-align: center; margin: 0; -webkit-text-size-adjust: 100%; }
-        .container { max-width: 600px; margin: auto; }
-        
-        h1 { display: flex; align-items: center; justify-content: center; gap: 12px; background-color: #1a1a1a; color: #ffcc00; padding: 15px; border-radius: 12px; border: 2px solid #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 10px; margin-bottom: 30px; font-size: 1.6em; }
-        .logo-header { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: white; border: 2px solid #ffcc00; }
-
-        #info-connexion { position: fixed; bottom: 0; left: 0; width: 100%; background: #fffce6; padding: 15px 0; font-size: 0.85em; border-top: 3px solid #1a1a1a; z-index: 1000; }
-        
-        .btn-jaune { display: inline-block; background: #ffc107; color: black; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 5px; font-size: 0.9em; border: 2px solid #1a1a1a; }
-        .btn-vert { display: none; background: #28a745; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; margin: 5px; font-size: 0.9em; border: 2px solid #1a1a1a; }
-        .btn-deconnexion { background: #dc3545; color: white; border: 2px solid #1a1a1a; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.8em; margin-left: 15px; }
-
-        .titre-section { text-align: left; font-weight: bold; font-size: 1.1em; border-bottom: 3px solid; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; }
-        .titre-premiere { color: #1a1a1a; border-color: #1a1a1a; }
-        .titre-reserve { color: #b38f00; border-color: #ffcc00; }
-        
-        .match-container { position: relative; margin-bottom: 5px; } 
-        .match-row { background: #fffce6; border: 2px solid #1a1a1a; border-radius: 12px; padding: 15px; cursor: pointer; text-decoration: none; color: inherit; display: block; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        
-        .match-content { display: flex; justify-content: space-between; align-items: center; }
-        .team { display: flex; align-items: center; gap: 10px; flex: 1; }
-        .team.right { justify-content: flex-end; text-align: right; }
-        .team-name { font-weight: bold; font-size: 0.95em; color: #1a1a1a; }
-        
-        .logo { width: 40px; height: 40px; object-fit: contain; border-radius: 50%; background: white; border: 2px solid #1a1a1a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
-        .match-date { text-align: center; font-size: 0.8em; color: #1a1a1a; font-weight: bold; margin-top: 8px; }
-        
-        .score-box { background: #ffcc00; color: #1a1a1a; font-weight: bold; font-size: 1.3em; padding: 5px 12px; border-radius: 8px; border: 2px solid #1a1a1a; min-width: 45px; text-align: center; }
-        .vs-box { font-weight: bold; color: #1a1a1a; font-size: 1em; }
-
-        .btn-score-match { position: absolute; top: -8px; left: -8px; background: #17a2b8; color: white; border: 2px solid #1a1a1a; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 10; }
-    </style>
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
 </head>
-<body>
+<body class="app">
 
-    <div class="container">
-        <h1><img src="chalosse.webp" alt="Logo FC Chalosse" class="logo-header"> FC Chalosse</h1>
-        
-        <div style="margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: center;">
-            <a href="effectif.html" class="btn-jaune">👕 Effectif</a>
-            <a href="calendrier.html" class="btn-jaune" style="background: #17a2b8; color: white;">📅 Calendrier</a>
-            <a href="stats.html" class="btn-jaune" style="background: #e2e3e5; color: black;">📊 Stats Saison</a>
-            
-            <a href="ajouter.html" id="btn-admin" class="btn-vert">➕ Joueur</a>
-            <a href="ajouter_match.html" id="btn-admin-match" class="btn-vert">➕ Match</a>
-            <a href="gerer_compo.html" id="btn-admin-compo" class="btn-vert" style="background: #17a2b8;">📋 Compos</a>
-            <a href="saisir_stats.html" id="btn-admin-stats" class="btn-vert" style="background: #6f42c1;">📝 Saisir Stats</a>
-            <a href="gerer_comptes.html" id="btn-admin-comptes" class="btn-vert" style="background: #dc3545;">⚙️ Comptes</a>
+    <main class="container">
+        <section class="hero">
+            <img src="chalosse.webp" alt="Logo FC Chalosse" class="hero-logo">
+            <div>
+                <p class="hero-kicker">Espace club</p>
+                <h1 class="hero-title">FC Chalosse</h1>
+                <p class="hero-sub" id="salutation">Bienvenue !</p>
+            </div>
+        </section>
+
+        <div class="grid-2">
+            <section>
+                <h2 class="titre-section titre-premiere">À l'affiche · Première</h2>
+                <div id="matchs-premiere" class="match-list"><div class="skeleton"></div></div>
+            </section>
+            <section>
+                <h2 class="titre-section titre-reserve">À l'affiche · Réserve</h2>
+                <div id="matchs-reserve" class="match-list"><div class="skeleton"></div></div>
+            </section>
         </div>
 
-        <div class="titre-section titre-premiere">🔵 À l'affiche - Première</div>
-        <div id="matchs-premiere"><p style="color:gray;">Chargement...</p></div>
-
-        <div class="titre-section titre-reserve">🟢 À l'affiche - Réserve</div>
-        <div id="matchs-reserve"><p style="color:gray;">Chargement...</p></div>
-    </div>
-
-    <div id="info-connexion">Vérification...</div>
+        <section id="zone-admin" class="hidden">
+            <h2 class="titre-section">Outils administrateur</h2>
+            <div class="quick-grid">
+                <a href="ajouter.html" class="quick-tile"><span class="quick-ic">👤</span>Ajouter un joueur</a>
+                <a href="ajouter_match.html" class="quick-tile"><span class="quick-ic">➕</span>Ajouter un match</a>
+                <a href="gerer_compo.html" class="quick-tile"><span class="quick-ic">📋</span>Compositions</a>
+                <a href="saisir_stats.html" class="quick-tile"><span class="quick-ic">📝</span>Saisir les stats</a>
+                <a href="gerer_comptes.html" class="quick-tile"><span class="quick-ic">⚙️</span>Comptes</a>
+            </div>
+        </section>
+    </main>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
-            authDomain: "chalosse-d1ef5.firebaseapp.com",
-            projectId: "chalosse-d1ef5",
-            storageBucket: "chalosse-d1ef5.firebasestorage.app",
-            messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { versDate } from "./js/ui.js";
+        import { carteMatch, activerActionsMatchs } from "./js/matchs.js";
 
         let estAdmin = false;
 
         onAuthStateChanged(auth, async (user) => {
-            const infoDiv = document.getElementById('info-connexion');
-            if (user) {
-                infoDiv.innerHTML = `Connecté : <b>${user.email}</b> <button id="btn-deconnecter" class="btn-deconnexion">Quitter</button>`;
-                document.getElementById('btn-deconnecter').addEventListener('click', () => { signOut(auth).then(() => { window.location.href = "connexion.html"; }); });
+            if (!user) { window.location.href = "connexion.html"; return; }
 
-                const docSnap = await getDoc(doc(db, "utilisateurs", user.uid));
-                if (docSnap.exists() && docSnap.data().role === "admin") {
-                    estAdmin = true;
-                    document.getElementById('btn-admin').style.display = 'inline-block';
-                    document.getElementById('btn-admin-match').style.display = 'inline-block';
-                    document.getElementById('btn-admin-compo').style.display = 'inline-block';
-                    document.getElementById('btn-admin-stats').style.display = 'inline-block';
-                    document.getElementById('btn-admin-comptes').style.display = 'inline-block';
-                }
-                chargerDerniersMatchs(); 
-            } else {
-                window.location.href = "connexion.html";
+            const profil = await chargerProfil(user.uid).catch(() => null);
+            if (profil?.prenom) document.getElementById('salutation').textContent = `Bonjour ${profil.prenom} 👋`;
+            if (profil?.role === "admin") {
+                estAdmin = true;
+                document.getElementById('zone-admin').classList.remove('hidden');
             }
+            chargerDerniersMatchs();
         });
 
-        function parserDate(dateStr) {
-            if (!dateStr) return NaN;
-            
-            let parseStandard = Date.parse(dateStr);
-            if (!isNaN(parseStandard)) return parseStandard;
-            
-            let parts = dateStr.split('/');
-            if (parts.length === 3) {
-                let jour = parts[0].padStart(2, '0');
-                let mois = parts[1].padStart(2, '0');
-                let annee = parts[2];
-                if (annee.length === 2) annee = "20" + annee;
-                return Date.parse(`${annee}-${mois}-${jour}T15:00:00`);
-            }
-            return NaN;
-        }
-
-        function selectionnerMatchLePlusProche(listeMatchs) {
-            if (listeMatchs.length === 0) return "<p>Aucun match prévu.</p>";
-
-            let matchLePlusProche = listeMatchs[0];
+        // Renvoie le match dont la date est la plus proche d'aujourd'hui
+        function matchLePlusProche(liste) {
+            let meilleur = liste[0];
             let diffMin = Infinity;
-            let aujourdHui = Date.now();
-
-            for (let i = 0; i < listeMatchs.length; i++) {
-                let msMatch = parserDate(listeMatchs[i].dateBrute);
-                
-                if (!isNaN(msMatch)) {
-                    let ecart = Math.abs(msMatch - aujourdHui);
-                    if (ecart < diffMin) {
-                        diffMin = ecart;
-                        matchLePlusProche = listeMatchs[i];
-                    }
+            const maintenant = Date.now();
+            liste.forEach(m => {
+                const date = versDate(m.data.date);
+                if (date) {
+                    const ecart = Math.abs(date.getTime() - maintenant);
+                    if (ecart < diffMin) { diffMin = ecart; meilleur = m; }
                 }
-            }
-
-            return matchLePlusProche.html;
+            });
+            return meilleur;
         }
 
         async function chargerDerniersMatchs() {
-            const querySnapshot = await getDocs(collection(db, "matchs"));
-            
-            let listePremiere = [];
-            let listeReserve = [];
+            try {
+                const snap = await getDocs(collection(db, "matchs"));
+                const premiere = [], reserve = [];
+                snap.forEach(d => {
+                    const m = { id: d.id, data: d.data() };
+                    (m.data.equipe_type === "premiere" ? premiere : reserve).push(m);
+                });
 
-            querySnapshot.forEach((doc) => {
-                let data = doc.data();
-                let logoAdversaire = data.logo ? `<img src="${data.logo}" class="logo">` : `<div class="logo">🛡️</div>`;
-                
-                let affichageCentre = `<div class="vs-box">VS</div>`;
-                if (data.score_chalosse !== undefined && data.score_chalosse !== null) {
-                    affichageCentre = `<div class="score-box">${data.score_chalosse} - ${data.score_adversaire}</div>`;
-                }
-
-                let btnScore = estAdmin ? `<button class="btn-score-match" onclick="event.preventDefault(); modifierScore('${doc.id}', '${data.adversaire}', '${data.score_chalosse}', '${data.score_adversaire}')" title="Éditer le score">✏️</button>` : "";
-
-                let matchHtml = `
-                    <div class="match-container">
-                        ${btnScore}
-                        <a href="match_detail.html?match=${doc.id}" class="match-row">
-                            <div class="match-content">
-                                <div class="team">
-                                    <img src="chalosse.webp" class="logo" alt="Logo Chalosse">
-                                    <span class="team-name">FC Chalosse</span>
-                                </div>
-                                ${affichageCentre}
-                                <div class="team right">
-                                    <span class="team-name">${data.adversaire || "Adversaire"}</span>
-                                    ${logoAdversaire}
-                                </div>
-                            </div>
-                            <div class="match-date">📅 ${data.date || "Date inconnue"}</div>
-                        </a>
-                    </div>
-                `;
-
-                let matchObjet = { html: matchHtml, dateBrute: data.date };
-
-                if (data.equipe_type === "premiere") listePremiere.push(matchObjet);
-                else listeReserve.push(matchObjet);
-            });
-
-            document.getElementById('matchs-premiere').innerHTML = selectionnerMatchLePlusProche(listePremiere);
-            document.getElementById('matchs-reserve').innerHTML = selectionnerMatchLePlusProche(listeReserve);
+                afficher('matchs-premiere', premiere);
+                afficher('matchs-reserve', reserve);
+            } catch (e) {
+                console.error(e);
+                document.getElementById('matchs-premiere').innerHTML = `<p class="empty error-text">Erreur de chargement des matchs.</p>`;
+                document.getElementById('matchs-reserve').innerHTML = '';
+            }
         }
 
-        window.modifierScore = async function(matchId, adversaire, scoreC, scoreA) {
-            let valC = (scoreC !== "undefined" && scoreC !== "null") ? scoreC : "";
-            let valA = (scoreA !== "undefined" && scoreA !== "null") ? scoreA : "";
-
-            let saisieChalosse = prompt(`Score de FC Chalosse :`, valC);
-            if (saisieChalosse === null) return;
-            if (saisieChalosse.trim() === "") {
-                await updateDoc(doc(db, "matchs", matchId), { score_chalosse: null, score_adversaire: null });
-                chargerDerniersMatchs();
+        function afficher(idConteneur, liste) {
+            const conteneur = document.getElementById(idConteneur);
+            if (liste.length === 0) {
+                conteneur.innerHTML = `<p class="empty">Aucun match prévu.</p>`;
                 return;
             }
+            const m = matchLePlusProche(liste);
+            conteneur.innerHTML = carteMatch(m.id, m.data, { admin: estAdmin });
+        }
 
-            let saisieAdversaire = prompt(`Score de ${adversaire} :`, valA);
-            if (saisieAdversaire === null) return;
-
-            await updateDoc(doc(db, "matchs", matchId), {
-                score_chalosse: parseInt(saisieChalosse) || 0,
-                score_adversaire: parseInt(saisieAdversaire) || 0
-            });
-            chargerDerniersMatchs(); 
-        };
+        activerActionsMatchs(chargerDerniersMatchs);
     </script>
 </body>
 </html>

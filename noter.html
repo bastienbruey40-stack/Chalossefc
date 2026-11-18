@@ -2,135 +2,100 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
     <title>Noter un joueur - FC Chalosse</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .card { background: white; padding: 20px; border-radius: 12px; max-width: 400px; margin: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input { width: 100%; margin: 10px 0; padding: 15px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 1.5em; text-align: center; }
-        .btn { background: #007bff; color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
-        
-        /* Zone pour le message "Déjà noté" */
-        #message-deja-note { display: none; background: #e9ecef; color: #495057; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.95em; }
-    </style>
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
 </head>
-<body>
+<body class="app">
 
-    <div class="card">
-        <h2 id="nom-joueur">Chargement...</h2>
-        
-        <!-- Le message qui apparaîtra si la note existe déjà -->
-        <div id="message-deja-note"></div>
+    <main class="container narrow">
+        <header class="page-header">
+            <h1 id="nom-joueur">Chargement…</h1>
+            <p>Attribuez une note sur 10 (ex : 7,5).</p>
+        </header>
 
-        <p>Attribue une note sur 10 (ex: 7.5 ou 7,5)</p>
-        
-        <input type="number" id="note" min="0" max="10" step="0.5" placeholder="Ex: 6.5">
-        
-        <button class="btn" id="btn-valider" onclick="enregistrerNote()">Valider la note</button>
-        <br>
-        <a href="index.html" class="btn-retour">Annuler et retourner à l'accueil</a>
-    </div>
+        <form class="card" id="form-note">
+            <div id="message-deja-note" class="info-admin"></div>
+            <input type="number" id="note" inputmode="decimal" min="0" max="10" step="0.5" placeholder="Ex : 6.5"
+                   style="font-size:1.8rem; text-align:center; font-weight:800">
+            <button class="btn" type="submit" id="btn-valider">Valider la note</button>
+            <a href="index.html" class="btn-retour">Annuler</a>
+        </form>
+    </main>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
-            authDomain: "chalosse-d1ef5.firebaseapp.com",
-            projectId: "chalosse-d1ef5",
-            storageBucket: "chalosse-d1ef5.firebasestorage.app",
-            messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
+        import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth } from "./js/firebase.js";
+        import { toast, flash } from "./js/ui.js";
 
         const urlParams = new URLSearchParams(window.location.search);
         const joueurId = urlParams.get('id');
         const matchId = urlParams.get('match');
-
         let utilisateurConnecte = null;
 
+        if (matchId) document.querySelector('.btn-retour').href = `match_detail.html?match=${matchId}`;
+
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                utilisateurConnecte = user;
-                // Dès qu'on sait qui est connecté, on vérifie s'il a déjà noté ce joueur
-                verifierNoteExistante();
-            } else {
-                alert("Tu dois être connecté pour pouvoir voter !");
+            if (!user) {
+                flash("Vous devez être connecté pour voter.", 'error');
                 window.location.href = "connexion.html";
+                return;
             }
+            utilisateurConnecte = user;
+            verifierNoteExistante();
         });
 
         async function chargerJoueur() {
-            if(!joueurId) return;
-            const docSnap = await getDoc(doc(db, "utilisateurs", joueurId));
-            if (docSnap.exists()) {
-                document.getElementById('nom-joueur').innerText = "Noter " + docSnap.data().prenom + " " + docSnap.data().nom;
-            } else {
-                document.getElementById('nom-joueur').innerText = "Joueur introuvable";
-            }
+            if (!joueurId) return;
+            const snap = await getDoc(doc(db, "utilisateurs", joueurId));
+            document.getElementById('nom-joueur').textContent = snap.exists()
+                ? `Noter ${snap.data().prenom} ${snap.data().nom}` : "Joueur introuvable";
         }
-        
         chargerJoueur();
 
-        // NOUVELLE FONCTION : Vérifie si une note est déjà dans la base
+        // Vérifie si une note existe déjà
         async function verifierNoteExistante() {
             if (!matchId || !joueurId || !utilisateurConnecte) return;
-            
-            const identifiantUnique = `${matchId}_${joueurId}_${utilisateurConnecte.uid}`;
-            const docSnap = await getDoc(doc(db, "notes", identifiantUnique));
-            
-            if (docSnap.exists()) {
-                const notePrecedente = docSnap.data().note;
-                
-                // On affiche le message
-                const divMessage = document.getElementById('message-deja-note');
-                divMessage.style.display = "block";
-                divMessage.innerHTML = `✅ Tu as déjà donné la note de <b>${notePrecedente}/10</b> à ce joueur. Tu peux la modifier ci-dessous.`;
-                
-                // On pré-remplit le champ
+            const snap = await getDoc(doc(db, "notes", `${matchId}_${joueurId}_${utilisateurConnecte.uid}`));
+            if (snap.exists()) {
+                const notePrecedente = snap.data().note;
+                const msg = document.getElementById('message-deja-note');
+                msg.style.display = "block";
+                msg.textContent = `✅ Vous avez déjà donné ${notePrecedente}/10 à ce joueur. Vous pouvez la modifier ci-dessous.`;
                 document.getElementById('note').value = notePrecedente;
-                
-                // On change le texte du bouton
-                document.getElementById('btn-valider').innerText = "Mettre à jour ma note";
+                document.getElementById('btn-valider').textContent = "Mettre à jour ma note";
             }
         }
 
-        window.enregistrerNote = async function() {
-            if (!utilisateurConnecte) return alert("Erreur : tu n'es pas connecté !");
-            if (!matchId) return alert("Erreur : aucun match n'a été sélectionné.");
+        document.getElementById('form-note').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!utilisateurConnecte) return toast("Vous n'êtes pas connecté.", 'error');
+            if (!matchId) return toast("Aucun match n'a été sélectionné.", 'error');
 
-            const valeurNote = parseFloat(document.getElementById('note').value);
-
+            const valeurNote = parseFloat(document.getElementById('note').value.replace(',', '.'));
             if (isNaN(valeurNote) || valeurNote < 0 || valeurNote > 10) {
-                alert("Merci de rentrer une note valide comprise entre 0 et 10 !");
-                return;
+                return toast("Merci de rentrer une note comprise entre 0 et 10.", 'error');
             }
-
             try {
-                const identifiantUnique = `${matchId}_${joueurId}_${utilisateurConnecte.uid}`;
-
-                await setDoc(doc(db, "notes", identifiantUnique), {
+                await setDoc(doc(db, "notes", `${matchId}_${joueurId}_${utilisateurConnecte.uid}`), {
                     joueur_id: joueurId,
                     match_id: matchId,
                     votant_id: utilisateurConnecte.uid,
                     note: valeurNote,
                     date: new Date().toISOString()
                 });
-
-                
-                // On retourne sur la page de détail du match, pas sur l'accueil !
+                flash("Note enregistrée !");
                 window.location.href = `match_detail.html?match=${matchId}`;
-            } catch (e) {
-                alert("❌ Erreur lors de l'enregistrement : " + e.message);
+            } catch (err) {
+                toast("Erreur lors de l'enregistrement : " + err.message, 'error');
             }
-        }
+        });
     </script>
 </body>
 </html>

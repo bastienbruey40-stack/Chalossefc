@@ -2,102 +2,85 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
     <title>FC Chalosse - Classement</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .container { max-width: 600px; margin: auto; }
-        .card { background: white; padding: 15px 20px; margin: 10px 0; border-radius: 12px; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
-        .rank { font-size: 1.5em; font-weight: bold; color: #ffc107; margin-right: 15px; }
-        .nom { font-size: 1.2em; font-weight: bold; text-align: left; flex-grow: 1; }
-        .moyenne { background: #007bff; color: white; padding: 10px 15px; border-radius: 8px; font-weight: bold; font-size: 1.2em; }
-        .btn-retour { display: inline-block; margin-top: 20px; background: #6c757d; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; }
-    </style>
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
 </head>
-<body>
+<body class="app">
 
-    <div class="container">
-        <h1>🏆 Homme du Match</h1>
-        <p>Classement moyen des joueurs</p>
-        
-        <div id="liste-classement">
-            <p>Calcul des moyennes en cours...</p>
+    <main class="container narrow">
+        <header class="page-header">
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> 🏆 Homme du match</h1>
+            <p>Classement général des joueurs selon leur note moyenne.</p>
+        </header>
+
+        <div class="onglets" role="tablist">
+            <a href="stats.html" class="btn-onglet" style="text-align:center; text-decoration:none">📊 Tableau complet</a>
+            <a href="classement.html" class="btn-onglet actif" style="text-align:center; text-decoration:none">🏆 Homme du match</a>
         </div>
 
-        <a href="index.html" class="btn-retour">⬅ Retour à la liste</a>
-    </div>
+        <div class="card" id="liste-classement">
+            <div class="skeleton small"></div><div class="skeleton small"></div>
+        </div>
+    </main>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCeE9UX-3y3rqc3oBoUJsmKrLUgyGRPxNI",
-            authDomain: "chalosse-d1ef5.firebaseapp.com",
-            projectId: "chalosse-d1ef5",
-            storageBucket: "chalosse-d1ef5.firebasestorage.app",
-            messagingSenderId: "33787098721",
-            appId: "1:33787098721:web:1c55d5f153426e1ae85c20"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { db } from "./js/firebase.js";
+        import { echapper } from "./js/ui.js";
 
         async function genererClassement() {
-            // 1. Récupérer tous les joueurs
+            // 1. Joueurs
             const joueursSnap = await getDocs(collection(db, "utilisateurs"));
-            let joueurs = {};
-            joueursSnap.forEach(doc => {
-                if(doc.data().role === "joueur") {
-                    joueurs[doc.id] = { nom: doc.data().prenom + " " + doc.data().nom, totalNotes: 0, nbNotes: 0 };
+            const joueurs = {};
+            joueursSnap.forEach(d => {
+                if (d.data().role === "joueur") {
+                    joueurs[d.id] = { nom: d.data().prenom + " " + d.data().nom, totalNotes: 0, nbNotes: 0 };
                 }
             });
 
-            // 2. Récupérer toutes les notes
+            // 2. Notes
             const notesSnap = await getDocs(collection(db, "notes"));
-            notesSnap.forEach(doc => {
-                let noteData = doc.data();
-                if (joueurs[noteData.joueur_id]) {
-                    joueurs[noteData.joueur_id].totalNotes += noteData.note;
-                    joueurs[noteData.joueur_id].nbNotes += 1;
+            notesSnap.forEach(d => {
+                const n = d.data();
+                const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
+                if (joueurs[id]) {
+                    joueurs[id].totalNotes += parseFloat(n.note);
+                    joueurs[id].nbNotes += 1;
                 }
             });
 
-            // 3. Calculer les moyennes et trier
-            let classement = [];
-            for (let id in joueurs) {
-                if (joueurs[id].nbNotes > 0) {
-                    let moyenne = (joueurs[id].totalNotes / joueurs[id].nbNotes).toFixed(1); // 1 chiffre après la virgule
-                    classement.push({ nom: joueurs[id].nom, moyenne: moyenne });
-                }
-            }
+            // 3. Moyennes triées
+            const classement = Object.values(joueurs)
+                .filter(j => j.nbNotes > 0)
+                .map(j => ({ nom: j.nom, moyenne: (j.totalNotes / j.nbNotes).toFixed(1) }))
+                .sort((a, b) => b.moyenne - a.moyenne);
 
-            // Trier du plus grand au plus petit
-            classement.sort((a, b) => b.moyenne - a.moyenne);
-
-            // 4. Afficher le HTML
+            // 4. Affichage
             const conteneur = document.getElementById('liste-classement');
-            conteneur.innerHTML = ''; 
-
-            if(classement.length === 0) {
-                conteneur.innerHTML = "<p>Aucune note enregistrée pour le moment.</p>";
+            if (classement.length === 0) {
+                conteneur.innerHTML = `<p class="muted" style="text-align:center; margin:0">Aucune note enregistrée pour le moment.</p>`;
                 return;
             }
-
-            classement.forEach((joueur, index) => {
-                let medaille = (index === 0) ? "🥇" : (index === 1) ? "🥈" : (index === 2) ? "🥉" : (index + 1) + ".";
-                conteneur.innerHTML += `
-                    <div class="card">
-                        <span class="rank">${medaille}</span>
-                        <span class="nom">${joueur.nom}</span>
-                        <span class="moyenne">${joueur.moyenne} / 10</span>
-                    </div>
-                `;
-            });
+            conteneur.innerHTML = classement.map((j, i) => {
+                const medaille = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+                return `
+                    <div class="classement-ligne ${i === 0 ? 'podium-1' : ''}">
+                        <span><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
+                        <span class="note-badge">${j.moyenne} / 10</span>
+                    </div>`;
+            }).join('');
         }
 
-        genererClassement();
+        genererClassement().catch(err => {
+            console.error(err);
+            document.getElementById('liste-classement').innerHTML = `<p class="error-text">Erreur de chargement.</p>`;
+        });
     </script>
 </body>
 </html>
