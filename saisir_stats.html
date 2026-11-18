@@ -31,6 +31,10 @@
         </div>
 
         <div class="card stats-saisie hidden" id="carte-effectif">
+            <div class="toolbar-row" style="margin-bottom: 10px;">
+                <strong style="font-size: .95rem;">Feuille de statistiques</strong>
+                <button type="button" class="btn-chip" id="btn-effacer-match" style="color: var(--rouge);">🗑️ Effacer les stats de ce match</button>
+            </div>
             <div id="liste-effectif"></div>
         </div>
 
@@ -43,7 +47,7 @@
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, flash, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { toast, flash, confirmer, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate, estJoue } from "./js/matchs.js";
 
         let tousLesMatchs = [];
@@ -151,6 +155,23 @@
         // Sélectionne tout le contenu au toucher pour remplacer "0" rapidement
         document.getElementById('liste-effectif').addEventListener('focusin', (e) => {
             if (e.target.matches('input')) e.target.select();
+        });
+
+        // Effacer toutes les stats du match sélectionné
+        document.getElementById('btn-effacer-match').addEventListener('click', async () => {
+            if (!matchActifId) return;
+            const ok = await confirmer(
+                "Voulez-vous remettre à zéro et supprimer toutes les statistiques (buts, passes, cartons) enregistrées pour ce match ?",
+                { titre: 'Supprimer les stats de ce match ?', ok: 'Supprimer les stats', danger: true }
+            );
+            if (!ok) return;
+            try {
+                await updateDoc(doc(db, "matchs", matchActifId), { stats_joueurs: {} });
+                document.querySelectorAll('#liste-effectif input').forEach(inp => { inp.value = 0; });
+                toast("Statistiques du match supprimées.");
+            } catch (err) {
+                toast("Erreur : " + err.message, 'error');
+            }
         });
 
         document.getElementById('btn-save').addEventListener('click', async () => {

@@ -30,56 +30,101 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { db } from "./js/firebase.js";
-        import { echapper } from "./js/ui.js";
+        import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { toast, confirmer, echapper } from "./js/ui.js";
+
+        let estAdmin = false;
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const profil = await chargerProfil(user.uid).catch(() => null);
+                estAdmin = profil?.role === "admin";
+            }
+            genererClassement();
+        });
 
         async function genererClassement() {
-            // 1. Joueurs
-            const joueursSnap = await getDocs(collection(db, "utilisateurs"));
-            const joueurs = {};
-            joueursSnap.forEach(d => {
-                if (d.data().role === "joueur") {
-                    joueurs[d.id] = { nom: d.data().prenom + " " + d.data().nom, totalNotes: 0, nbNotes: 0 };
+            try {
+                // 1. Joueurs
+                const joueursSnap = await getDocs(collection(db, "utilisateurs"));
+                const joueurs = {};
+                joueursSnap.forEach(d => {
+                    if (d.data().role === "joueur") {
+                        joueurs[d.id] = { id: d.id, nom: d.data().prenom + " " + d.data().nom, totalNotes: 0, nbNotes: 0, noteDocIds: [] };
+                    }
+                });
+
+                // 2. Notes
+                const notesSnap = await getDocs(collection(db, "notes"));
+                notesSnap.forEach(d => {
+                    const n = d.data();
+                    const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
+                    if (joueurs[id]) {
+                        joueurs[id].totalNotes += parseFloat(n.note);
+                        joueurs[id].nbNotes += 1;
+                        joueurs[id].noteDocIds.push(d.id);
+                    }
+                });
+
+                // 3. Moyennes triées
+                const classement = Object.values(joueurs)
+                    .filter(j => j.nbNotes > 0)
+                    .map(j => ({ ...j, moyenne: (j.totalNotes / j.nbNotes).toFixed(1) }))
+                    .sort((a, b) => b.moyenne - a.moyenne);
+
+                // 4. Affichage
+                const conteneur = document.getElementById('liste-classement');
+                if (classement.length === 0) {
+                    conteneur.innerHTML = `<p class="muted" style="text-align:center; margin:0">Aucune note enregistrée pour le moment.</p>`;
+                    return;
                 }
-            });
-
-            // 2. Notes
-            const notesSnap = await getDocs(collection(db, "notes"));
-            notesSnap.forEach(d => {
-                const n = d.data();
-                const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
-                if (joueurs[id]) {
-                    joueurs[id].totalNotes += parseFloat(n.note);
-                    joueurs[id].nbNotes += 1;
-                }
-            });
-
-            // 3. Moyennes triées
-            const classement = Object.values(joueurs)
-                .filter(j => j.nbNotes > 0)
-                .map(j => ({ nom: j.nom, moyenne: (j.totalNotes / j.nbNotes).toFixed(1) }))
-                .sort((a, b) => b.moyenne - a.moyenne);
-
-            // 4. Affichage
-            const conteneur = document.getElementById('liste-classement');
-            if (classement.length === 0) {
-                conteneur.innerHTML = `<p class="muted" style="text-align:center; margin:0">Aucune note enregistrée pour le moment.</p>`;
-                return;
+                conteneur.innerHTML = classement.map((j, i) => {
+                    const medaille = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+                    const btnAdmin = estAdmin
+                        ? `<button type="button" class="btn-supprimer btn-suppr-notes" data-id="${j.id}" data-nom="${echapper(j.nom)}"
+                                   style="width:32px; height:32px; font-size:.82rem; margin-left:8px"
+                                   title="Supprimer les notes de ${echapper(j.nom)}">🗑️</button>`
+                        : '';
+                    return `
+                        <div class="classement-ligne ${i === 0 ? 'podium-1' : ''}">
+                            <span><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
+                            <div style="display:flex; align-items:center;">
+                                <span class="note-badge">${j.moyenne} / 10</span>
+                                ${btnAdmin}
+                            </div>
+                        </div>`;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+                document.getElementById('liste-classement').innerHTML = `<p class="error-text">Erreur de chargement.</p>`;
             }
-            conteneur.innerHTML = classement.map((j, i) => {
-                const medaille = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
-                return `
-                    <div class="classement-ligne ${i === 0 ? 'podium-1' : ''}">
-                        <span><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
-                        <span class="note-badge">${j.moyenne} / 10</span>
-                    </div>`;
-            }).join('');
         }
 
-        genererClassement().catch(err => {
-            console.error(err);
-            document.getElementById('liste-classement').innerHTML = `<p class="error-text">Erreur de chargement.</p>`;
+        document.getElementById('liste-classement').addEventListener('click', async (e) => {
+            const btn = e.target.closest('.btn-suppr-notes');
+            if (!btn) return;
+            const joueurId = btn.dataset.id;
+            const nom = btn.dataset.nom;
+            const ok = await confirmer(`Supprimer toutes les notes reçues par ${nom} ?`, {
+                titre: 'Supprimer ces notes ?', ok: 'Supprimer', danger: true
+            });
+            if (!ok) return;
+            try {
+                const notesSnap = await getDocs(collection(db, "notes"));
+                const promesses = [];
+                notesSnap.forEach(d => {
+                    const n = d.data();
+                    const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
+                    if (id === joueurId) promesses.push(deleteDoc(doc(db, "notes", d.id)));
+                });
+                await Promise.all(promesses);
+                toast(`Notes de ${nom} supprimées.`);
+                genererClassement();
+            } catch (err) {
+                toast("Erreur : " + err.message, 'error');
+            }
         });
     </script>
 </body>

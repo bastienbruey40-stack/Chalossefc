@@ -15,7 +15,13 @@
 
     <main class="container narrow">
         <header class="page-header">
-            <h1><img src="chalosse.webp" alt="" class="logo-header"> <span id="titre-match">Match</span></h1>
+            <div class="toolbar-row" style="margin-bottom: 6px;">
+                <h1><img src="chalosse.webp" alt="" class="logo-header"> <span id="titre-match">Match</span></h1>
+                <div class="toolbar-actions hidden" id="outils-admin-match">
+                    <button type="button" class="btn-chip" id="btn-editer-match">✏️ Modifier le match</button>
+                    <button type="button" class="btn-chip" id="btn-suppr-notes-match" title="Effacer toutes les notes de ce match">🗑️ Effacer les notes</button>
+                </div>
+            </div>
             <p id="sous-titre-match">Chargement…</p>
         </header>
 
@@ -47,15 +53,18 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { editerMatchComplet } from "./js/matchs.js";
 
         const matchId = new URLSearchParams(window.location.search).get('match');
 
         let utilisateurActuel = null;
         let estAdmin = false;
+        let matchDataCourant = null;
+        let notesDocsDuMatch = [];
         let notesExistantes = {};
 
         function changerOnglet(cible) {
@@ -71,6 +80,7 @@
             utilisateurActuel = user;
             const profil = await chargerProfil(user.uid).catch(() => null);
             estAdmin = profil?.role === "admin";
+            if (estAdmin) document.getElementById('outils-admin-match').classList.remove('hidden');
 
             if (!matchId) { window.location.href = "index.html"; return; }
             chargerDetailsMatch();
@@ -85,6 +95,7 @@
                 }
 
                 const matchData = matchSnap.data();
+                matchDataCourant = matchData;
                 document.getElementById('titre-match').textContent = `Contre ${matchData.adversaire}`;
                 const score = (matchData.score_chalosse !== undefined && matchData.score_chalosse !== null)
                     ? ` · Score : ${matchData.score_chalosse} - ${matchData.score_adversaire}` : '';
@@ -107,6 +118,7 @@
                 const statsMatch = {};
                 const votantsUniques = new Set();
                 notesExistantes = {};
+                notesDocsDuMatch = [];
 
                 compoIds.forEach(id => {
                     if (joueursInfos[id]) statsMatch[id] = { nom: joueursInfos[id], total: 0, nb: 0 };
@@ -115,10 +127,11 @@
                 notesSnap.forEach(nDoc => {
                     const noteData = nDoc.data();
                     const parts = nDoc.id.split('_');
-                    if (parts[0] === matchId) {
-                        const jId = parts[1];
-                        const voterId = parts[2];
-                        votantsUniques.add(voterId);
+                    if (parts[0] === matchId || noteData.matchId === matchId || noteData.match_id === matchId) {
+                        notesDocsDuMatch.push(nDoc.id);
+                        const jId = parts[1] || noteData.joueurId || noteData.joueur_id;
+                        const voterId = parts[2] || noteData.voterId || noteData.votant_id;
+                        if (voterId) votantsUniques.add(voterId);
                         if (voterId === utilisateurActuel.uid) notesExistantes[jId] = parseFloat(noteData.note);
                         if (statsMatch[jId]) {
                             statsMatch[jId].total += parseFloat(noteData.note);
@@ -157,7 +170,11 @@
                     liste.push({ nom: statsMatch[id].nom, moyenne: (statsMatch[id].total / statsMatch[id].nb).toFixed(1), nb: statsMatch[id].nb });
                 }
             }
-            if (liste.length === 0) return;
+            if (liste.length === 0) {
+                document.getElementById('liste-classement').innerHTML =
+                    `<p class="muted" style="text-align:center; margin:0">Aucune note attribuée pour le moment.</p>`;
+                return;
+            }
 
             liste.sort((a, b) => b.moyenne - a.moyenne);
             document.getElementById('liste-classement').innerHTML = liste.map((j, index) => {
@@ -169,6 +186,33 @@
                     </div>`;
             }).join('');
         }
+
+        // Bouton admin : modifier toutes les informations du match
+        document.getElementById('btn-editer-match').addEventListener('click', async () => {
+            if (!matchDataCourant) return;
+            const modifie = await editerMatchComplet(matchId, matchDataCourant);
+            if (modifie) chargerDetailsMatch();
+        });
+
+        // Bouton admin : supprimer toutes les notes de ce match
+        document.getElementById('btn-suppr-notes-match').addEventListener('click', async () => {
+            if (notesDocsDuMatch.length === 0) {
+                toast("Aucune note à supprimer sur ce match.", 'info');
+                return;
+            }
+            const ok = await confirmer(
+                `Toutes les notes attribuées sur ce match (${notesDocsDuMatch.length} note(s)) seront supprimées.`,
+                { titre: 'Effacer les notes du match ?', ok: 'Effacer les notes', danger: true }
+            );
+            if (!ok) return;
+            try {
+                await Promise.all(notesDocsDuMatch.map(id => deleteDoc(doc(db, "notes", id))));
+                toast("Notes du match supprimées.");
+                chargerDetailsMatch();
+            } catch (err) {
+                toast("Erreur : " + err.message, 'error');
+            }
+        });
 
         document.getElementById('btn-valider-notes').addEventListener('click', async () => {
             if (!utilisateurActuel) return;

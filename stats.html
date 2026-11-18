@@ -24,14 +24,20 @@
             <a href="classement.html" class="btn-onglet" style="text-align:center; text-decoration:none">🏆 Homme du match</a>
         </div>
 
-        <div class="search">
-            <input type="search" id="recherche" placeholder="Rechercher un joueur…" autocomplete="off">
+        <div class="toolbar-row">
+            <div class="search">
+                <input type="search" id="recherche" placeholder="Rechercher un joueur…" autocomplete="off">
+            </div>
+            <div class="toolbar-actions hidden" id="outils-admin-stats">
+                <a href="saisir_stats.html" class="btn-chip primary">📝 Saisir stats</a>
+                <button type="button" class="btn-chip" id="btn-reset-saison">🗑️ Réinitialiser toute la saison</button>
+            </div>
         </div>
 
         <div class="table-wrap">
             <table>
                 <thead>
-                    <tr>
+                    <tr id="entete-table">
                         <th data-tri="nom">Joueur</th>
                         <th data-tri="mj" title="Matchs joués">MJ</th>
                         <th data-tri="buts" title="Buts" class="trie">⚽ Buts</th>
@@ -39,10 +45,11 @@
                         <th data-tri="moyenne" title="Note moyenne">⭐ Moy.</th>
                         <th data-tri="jaunes" title="Cartons jaunes">🟨</th>
                         <th data-tri="rouges" title="Cartons rouges">🟥</th>
+                        <th id="th-admin" class="hidden" title="Supprimer les stats du joueur">Action</th>
                     </tr>
                 </thead>
                 <tbody id="corps-table">
-                    <tr><td colspan="7" class="muted">Calcul en cours…</td></tr>
+                    <tr><td colspan="8" class="muted">Calcul en cours…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -52,12 +59,26 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { db } from "./js/firebase.js";
-        import { echapper } from "./js/ui.js";
+        import { collection, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { toast, confirmer, ouvrirModal, chargement, echapper } from "./js/ui.js";
 
+        let estAdmin = false;
         let liste = [];
         let cleTri = 'buts';
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const profil = await chargerProfil(user.uid).catch(() => null);
+                estAdmin = profil?.role === "admin";
+                if (estAdmin) {
+                    document.getElementById('outils-admin-stats').classList.remove('hidden');
+                    document.getElementById('th-admin').classList.remove('hidden');
+                }
+            }
+            calculerStats();
+        });
 
         async function calculerStats() {
             try {
@@ -68,6 +89,7 @@
                     const data = d.data();
                     if (data.role === "joueur") {
                         statsGlobales[d.id] = {
+                            id: d.id,
                             nom: `${data.prenom} ${data.nom}`,
                             mj: 0, buts: 0, passes: 0, jaunes: 0, rouges: 0,
                             totalNotes: 0, nbVotes: 0
@@ -95,7 +117,7 @@
                 const notesRef = await getDocs(collection(db, "notes"));
                 notesRef.forEach(d => {
                     const n = d.data();
-                    const joueurId = n.joueurId || d.id.split('_')[1];
+                    const joueurId = n.joueurId || n.joueur_id || d.id.split('_')[1];
                     if (statsGlobales[joueurId]) {
                         statsGlobales[joueurId].totalNotes += parseFloat(n.note);
                         statsGlobales[joueurId].nbVotes++;
@@ -109,7 +131,7 @@
                 afficher();
             } catch (error) {
                 console.error("Erreur lors du calcul des statistiques :", error);
-                document.getElementById('corps-table').innerHTML = `<tr><td colspan="7" class="error-text">Erreur de chargement des statistiques.</td></tr>`;
+                document.getElementById('corps-table').innerHTML = `<tr><td colspan="8" class="error-text">Erreur de chargement des statistiques.</td></tr>`;
             }
         }
 
@@ -124,21 +146,156 @@
                     : (b[cleTri] - a[cleTri]) || (b.buts - a.buts) || (b.mj - a.mj));
 
             const corps = document.getElementById('corps-table');
+            const nbCols = estAdmin ? 8 : 7;
             if (lignes.length === 0) {
-                corps.innerHTML = `<tr><td colspan="7" class="muted">${q ? 'Aucun joueur ne correspond.' : 'Aucun joueur dans la base de données.'}</td></tr>`;
+                corps.innerHTML = `<tr><td colspan="${nbCols}" class="muted">${q ? 'Aucun joueur ne correspond.' : 'Aucun joueur dans la base de données.'}</td></tr>`;
                 return;
             }
-            corps.innerHTML = lignes.map(s => `
-                <tr>
-                    <td class="nom-joueur">${echapper(s.nom)}</td>
-                    <td>${s.mj}</td>
-                    ${cellule(s.buts, 'c-buts')}
-                    ${cellule(s.passes, 'c-passes')}
-                    <td style="font-weight:700">${s.moyenne >= 0 ? s.moyenne.toFixed(1) : '<span class="c-zero">–</span>'}</td>
-                    ${cellule(s.jaunes, 'c-jaunes')}
-                    ${cellule(s.rouges, 'c-rouges')}
-                </tr>`).join('');
+            corps.innerHTML = lignes.map(s => {
+                const aDesStats = s.buts > 0 || s.passes > 0 || s.jaunes > 0 || s.rouges > 0 || s.moyenne >= 0 || s.mj > 0;
+                const colAdmin = estAdmin
+                    ? `<td>
+                        <button type="button" class="btn-supprimer btn-reset-joueur" data-id="${s.id}" data-nom="${echapper(s.nom)}"
+                                style="width:34px; height:34px; font-size:.85rem; ${aDesStats ? '' : 'opacity:.35'}"
+                                title="Supprimer les statistiques de ${echapper(s.nom)}">🗑️</button>
+                       </td>`
+                    : '';
+                return `
+                    <tr>
+                        <td class="nom-joueur">${echapper(s.nom)}</td>
+                        <td>${s.mj}</td>
+                        ${cellule(s.buts, 'c-buts')}
+                        ${cellule(s.passes, 'c-passes')}
+                        <td style="font-weight:700">${s.moyenne >= 0 ? s.moyenne.toFixed(1) : '<span class="c-zero">–</span>'}</td>
+                        ${cellule(s.jaunes, 'c-jaunes')}
+                        ${cellule(s.rouges, 'c-rouges')}
+                        ${colAdmin}
+                    </tr>`;
+            }).join('');
         }
+
+        // Supprimer les statistiques d'un joueur précis
+        async function supprimerStatsJoueur(joueurId, nomJoueur) {
+            ouvrirModal((boite, fermer) => {
+                boite.innerHTML = `
+                    <h3 class="modal-title">🗑️ Réinitialiser ${echapper(nomJoueur)}</h3>
+                    <p class="modal-text">Choisissez les statistiques à supprimer pour ce joueur :</p>
+                    <div style="text-align:left; margin: 14px 0; display: grid; gap: 10px;">
+                        <label class="joueur-ligne" style="margin:0; cursor:pointer; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                            <span><strong>Buts, passes et cartons</strong><br><small class="muted">Remet à zéro ⚽, 🎯, 🟨 et 🟥 sur tous les matchs</small></span>
+                            <input type="checkbox" id="chk-stats" checked>
+                        </label>
+                        <label class="joueur-ligne" style="margin:0; cursor:pointer; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                            <span><strong>Notes et moyenne (⭐)</strong><br><small class="muted">Supprime toutes les notes reçues par ce joueur</small></span>
+                            <input type="checkbox" id="chk-notes" checked>
+                        </label>
+                        <label class="joueur-ligne" style="margin:0; cursor:pointer; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                            <span><strong>Matchs joués (MJ / Compos)</strong><br><small class="muted">Retire aussi le joueur des compositions passées</small></span>
+                            <input type="checkbox" id="chk-mj">
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-reset">Annuler</button>
+                        <button type="button" class="btn-modal btn-modal-ok danger" id="btn-confirmer-reset">Supprimer les stats</button>
+                    </div>
+                `;
+
+                boite.querySelector('#btn-annuler-reset').onclick = () => fermer(false);
+                boite.querySelector('#btn-confirmer-reset').onclick = async () => {
+                    const effacerStats = boite.querySelector('#chk-stats').checked;
+                    const effacerNotes = boite.querySelector('#chk-notes').checked;
+                    const effacerMj = boite.querySelector('#chk-mj').checked;
+
+                    if (!effacerStats && !effacerNotes && !effacerMj) {
+                        toast("Cochez au moins un élément à réinitialiser.", 'error');
+                        return;
+                    }
+
+                    const btnOk = boite.querySelector('#btn-confirmer-reset');
+                    chargement(btnOk, true, 'Suppression…');
+                    try {
+                        const promesses = [];
+
+                        if (effacerStats || effacerMj) {
+                            const matchsSnap = await getDocs(collection(db, "matchs"));
+                            matchsSnap.forEach(mDoc => {
+                                const d = mDoc.data();
+                                const maj = {};
+                                let modifie = false;
+
+                                if (effacerStats && d.stats_joueurs && d.stats_joueurs[joueurId]) {
+                                    const copieStats = { ...d.stats_joueurs };
+                                    delete copieStats[joueurId];
+                                    maj.stats_joueurs = copieStats;
+                                    modifie = true;
+                                }
+                                if (effacerMj && Array.isArray(d.compo) && d.compo.includes(joueurId)) {
+                                    maj.compo = d.compo.filter(id => id !== joueurId);
+                                    modifie = true;
+                                }
+                                if (modifie) promesses.push(updateDoc(doc(db, "matchs", mDoc.id), maj));
+                            });
+                        }
+
+                        if (effacerNotes) {
+                            const notesSnap = await getDocs(collection(db, "notes"));
+                            notesSnap.forEach(nDoc => {
+                                const n = nDoc.data();
+                                const idJ = n.joueurId || n.joueur_id || nDoc.id.split('_')[1];
+                                if (idJ === joueurId) promesses.push(deleteDoc(doc(db, "notes", nDoc.id)));
+                            });
+                        }
+
+                        await Promise.all(promesses);
+                        toast(`Statistiques de ${nomJoueur} supprimées.`);
+                        fermer(true);
+                        calculerStats();
+                    } catch (err) {
+                        console.error(err);
+                        toast("Erreur : " + err.message, 'error');
+                        chargement(btnOk, false);
+                    }
+                };
+            });
+        }
+
+        document.getElementById('corps-table').addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-reset-joueur');
+            if (!btn) return;
+            supprimerStatsJoueur(btn.dataset.id, btn.dataset.nom);
+        });
+
+        // Réinitialiser toutes les statistiques de la saison
+        document.getElementById('btn-reset-saison').addEventListener('click', async () => {
+            const ok = await confirmer(
+                "Voulez-vous remettre à zéro les buts, passes, cartons et notes de TOUS les joueurs sur l'ensemble de la saison ?",
+                { titre: 'Réinitialiser toutes les statistiques ?', ok: 'Tout remettre à zéro', danger: true }
+            );
+            if (!ok) return;
+
+            const btn = document.getElementById('btn-reset-saison');
+            chargement(btn, true, 'Réinitialisation…');
+            try {
+                const promesses = [];
+                const matchsSnap = await getDocs(collection(db, "matchs"));
+                matchsSnap.forEach(mDoc => {
+                    if (mDoc.data().stats_joueurs) {
+                        promesses.push(updateDoc(doc(db, "matchs", mDoc.id), { stats_joueurs: {} }));
+                    }
+                });
+                const notesSnap = await getDocs(collection(db, "notes"));
+                notesSnap.forEach(nDoc => {
+                    promesses.push(deleteDoc(doc(db, "notes", nDoc.id)));
+                });
+                await Promise.all(promesses);
+                toast("Toutes les statistiques et notes ont été remises à zéro.");
+                calculerStats();
+            } catch (err) {
+                toast("Erreur : " + err.message, 'error');
+            } finally {
+                chargement(btn, false);
+            }
+        });
 
         document.querySelectorAll('th[data-tri]').forEach(th => th.addEventListener('click', () => {
             cleTri = th.dataset.tri;
@@ -146,8 +303,6 @@
             afficher();
         }));
         document.getElementById('recherche').addEventListener('input', afficher);
-
-        calculerStats();
     </script>
 </body>
 </html>
