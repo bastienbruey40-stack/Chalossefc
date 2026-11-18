@@ -19,29 +19,57 @@
             <p id="resume-effectif">Chargement de l'effectif…</p>
         </header>
 
-        <div class="search">
-            <input type="search" id="recherche" placeholder="Rechercher un joueur ou un poste…" autocomplete="off">
+        <div class="toolbar-row">
+            <div class="search">
+                <input type="search" id="recherche" placeholder="Rechercher un joueur ou un poste…" autocomplete="off">
+            </div>
+            <div class="toolbar-actions hidden" id="outils-admin">
+                <button type="button" class="btn-chip" id="btn-mode-select">☑️ Sélection multiple</button>
+                <a href="ajouter.html" class="btn-chip primary">➕ Ajouter</a>
+            </div>
+        </div>
+
+        <div class="onglets" role="tablist" id="filtres-poste">
+            <button type="button" class="btn-onglet actif" data-poste="tous">Tous</button>
+            <button type="button" class="btn-onglet" data-poste="Gardien">🧤 Gardiens</button>
+            <button type="button" class="btn-onglet" data-poste="Défenseur">🛡️ Déf.</button>
+            <button type="button" class="btn-onglet" data-poste="Milieu">⚙️ Milieux</button>
+            <button type="button" class="btn-onglet" data-poste="Attaquant">⚡ Attaq.</button>
         </div>
 
         <div id="liste-tous-joueurs" class="cards-grid">
             <div class="skeleton small"></div><div class="skeleton small"></div><div class="skeleton small"></div>
         </div>
+
+        <!-- Barre flottante de suppression groupée -->
+        <div class="sticky-actions hidden" id="barre-selection">
+            <span class="sticky-info"><strong id="nb-select">0</strong> sélectionné(s)</span>
+            <button type="button" class="btn-chip" id="btn-tout-cocher">Tout cocher</button>
+            <button type="button" class="btn" id="btn-suppr-lot" style="background:var(--rouge); color:#fff; margin-top:0">🗑️ Supprimer</button>
+        </div>
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, confirmer, echapper, initiales } from "./js/ui.js";
+        import { toast, confirmer, formulaire, chargement, echapper, initiales } from "./js/ui.js";
 
         let estAdmin = false;
         let listeJoueurs = [];
+        let filtrePoste = 'tous';
+        let modeSelection = false;
+        const selection = new Set();
+
         const conteneur = document.getElementById('liste-tous-joueurs');
+        const btnModeSelect = document.getElementById('btn-mode-select');
+        const barreSelection = document.getElementById('barre-selection');
 
         onAuthStateChanged(auth, async (user) => {
             if (user) {
                 const profil = await chargerProfil(user.uid).catch(() => null);
                 estAdmin = profil?.role === "admin";
+                if (estAdmin) document.getElementById('outils-admin').classList.remove('hidden');
             }
             chargerTousLesJoueurs();
         });
@@ -54,9 +82,8 @@
                     const data = d.data();
                     if (data.role === "joueur") listeJoueurs.push({ id: d.id, ...data });
                 });
-                listeJoueurs.sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
-                document.getElementById('resume-effectif').textContent =
-                    `${listeJoueurs.length} joueur${listeJoueurs.length > 1 ? 's' : ''} dans l'effectif`;
+                trierJoueurs();
+                majResume();
                 afficher();
             } catch (error) {
                 console.error("Erreur:", error);
@@ -64,42 +91,181 @@
             }
         }
 
-        function afficher() {
+        function trierJoueurs() {
+            listeJoueurs.sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+        }
+
+        function majResume() {
+            document.getElementById('resume-effectif').textContent =
+                `${listeJoueurs.length} joueur${listeJoueurs.length > 1 ? 's' : ''} dans l'effectif`;
+        }
+
+        function joueursFiltres() {
             const q = document.getElementById('recherche').value.trim().toLowerCase();
-            const filtres = listeJoueurs.filter(j =>
-                `${j.prenom} ${j.nom} ${j.poste || ''}`.toLowerCase().includes(q));
+            return listeJoueurs.filter(j => {
+                const okPoste = filtrePoste === 'tous' || (j.poste || '').toLowerCase() === filtrePoste.toLowerCase();
+                const okTexte = !q || `${j.prenom} ${j.nom} ${j.poste || ''}`.toLowerCase().includes(q);
+                return okPoste && okTexte;
+            });
+        }
+
+        function afficher() {
+            const filtres = joueursFiltres();
+            majBarreSelection(filtres);
 
             if (filtres.length === 0) {
-                conteneur.innerHTML = `<p class="empty">${q ? 'Aucun joueur ne correspond à la recherche.' : 'Aucun joueur trouvé dans la base.'}</p>`;
+                conteneur.innerHTML = `<p class="empty">Aucun joueur ne correspond aux critères.</p>`;
                 return;
             }
 
-            conteneur.innerHTML = filtres.map(j => `
-                <div class="player-card">
-                    <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
-                    <div class="info">
-                        <strong>${echapper(j.prenom)} ${echapper((j.nom || '').toUpperCase())}</strong>
-                        <span class="tag">${echapper(j.poste || 'Poste non renseigné')}</span>
-                    </div>
-                    ${estAdmin ? `<button type="button" class="btn-supprimer" data-id="${j.id}" title="Supprimer ce joueur" aria-label="Supprimer ce joueur">🗑️</button>` : ''}
-                </div>`).join('');
+            conteneur.innerHTML = filtres.map(j => {
+                const coche = selection.has(j.id);
+                const actionsAdmin = !estAdmin ? '' : modeSelection
+                    ? `<span class="select-box" aria-hidden="true">✓</span>`
+                    : `<div class="card-actions">
+                        <button type="button" class="btn-editer" data-id="${j.id}" title="Modifier ce joueur" aria-label="Modifier ce joueur">✏️</button>
+                        <button type="button" class="btn-supprimer" data-id="${j.id}" title="Supprimer ce joueur" aria-label="Supprimer ce joueur">🗑️</button>
+                       </div>`;
+
+                return `
+                    <div class="player-card${modeSelection ? ' selectable' : ''}${coche ? ' selected' : ''}" data-card-id="${j.id}">
+                        <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
+                        <div class="info">
+                            <strong>${echapper(j.prenom)} ${echapper((j.nom || '').toUpperCase())}</strong>
+                            <span class="tag">${echapper(j.poste || 'Poste non renseigné')}</span>
+                        </div>
+                        ${actionsAdmin}
+                    </div>`;
+            }).join('');
         }
+
+        function majBarreSelection(filtres = joueursFiltres()) {
+            if (!modeSelection) {
+                barreSelection.classList.add('hidden');
+                return;
+            }
+            barreSelection.classList.remove('hidden');
+            document.getElementById('nb-select').textContent = selection.size;
+            const toutEstCoche = filtres.length > 0 && filtres.every(j => selection.has(j.id));
+            document.getElementById('btn-tout-cocher').textContent = toutEstCoche ? 'Tout décocher' : 'Tout cocher';
+            document.getElementById('btn-suppr-lot').disabled = selection.size === 0;
+        }
+
+        // Activer / désactiver le mode sélection multiple
+        btnModeSelect.addEventListener('click', () => {
+            modeSelection = !modeSelection;
+            selection.clear();
+            btnModeSelect.classList.toggle('active', modeSelection);
+            btnModeSelect.textContent = modeSelection ? '✕ Quitter la sélection' : '☑️ Sélection multiple';
+            afficher();
+        });
+
+        // Tout cocher / tout décocher parmi les joueurs visibles
+        document.getElementById('btn-tout-cocher').addEventListener('click', () => {
+            const filtres = joueursFiltres();
+            const toutEstCoche = filtres.length > 0 && filtres.every(j => selection.has(j.id));
+            filtres.forEach(j => toutEstCoche ? selection.delete(j.id) : selection.add(j.id));
+            afficher();
+        });
+
+        // Suppression groupée en 1 clic
+        document.getElementById('btn-suppr-lot').addEventListener('click', async () => {
+            if (selection.size === 0) return;
+            const ids = [...selection];
+            const ok = await confirmer(
+                `Voulez-vous supprimer définitivement les ${ids.length} joueur(s) sélectionné(s) ?`,
+                { titre: `Supprimer ${ids.length} joueur(s) ?`, ok: `Supprimer (${ids.length})`, danger: true }
+            );
+            if (!ok) return;
+
+            const btn = document.getElementById('btn-suppr-lot');
+            chargement(btn, true, 'Suppression…');
+            try {
+                await Promise.all(ids.map(id => deleteDoc(doc(db, "utilisateurs", id))));
+                listeJoueurs = listeJoueurs.filter(j => !selection.has(j.id));
+                selection.clear();
+                modeSelection = false;
+                btnModeSelect.classList.remove('active');
+                btnModeSelect.textContent = '☑️ Sélection multiple';
+                majResume();
+                afficher();
+                toast(`${ids.length} joueur(s) supprimé(s).`);
+            } catch (error) {
+                toast("Erreur lors de la suppression : " + error.message, 'error');
+            } finally {
+                chargement(btn, false);
+            }
+        });
 
         document.getElementById('recherche').addEventListener('input', afficher);
 
+        document.querySelectorAll('#filtres-poste [data-poste]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#filtres-poste [data-poste]').forEach(b => b.classList.toggle('actif', b === btn));
+                filtrePoste = btn.dataset.poste;
+                afficher();
+            });
+        });
+
         conteneur.addEventListener('click', async (e) => {
-            const btn = e.target.closest('.btn-supprimer');
-            if (!btn) return;
-            const joueur = listeJoueurs.find(j => j.id === btn.dataset.id);
+            // En mode sélection : un clic sur toute la carte coche/décoche le joueur
+            if (modeSelection) {
+                const carte = e.target.closest('[data-card-id]');
+                if (!carte) return;
+                const id = carte.dataset.cardId;
+                selection.has(id) ? selection.delete(id) : selection.add(id);
+                carte.classList.toggle('selected', selection.has(id));
+                majBarreSelection();
+                return;
+            }
+
+            // Édition rapide d'un joueur
+            const btnEdit = e.target.closest('.btn-editer');
+            if (btnEdit) {
+                const joueur = listeJoueurs.find(j => j.id === btnEdit.dataset.id);
+                if (!joueur) return;
+                const res = await formulaire({
+                    titre: 'Modifier le joueur',
+                    champs: [
+                        { nom: 'prenom', label: 'Prénom', valeur: joueur.prenom || '' },
+                        { nom: 'nom', label: 'Nom', valeur: joueur.nom || '' },
+                        { nom: 'poste', label: 'Poste (Gardien, Défenseur, Milieu, Attaquant)', valeur: joueur.poste || 'Milieu' }
+                    ]
+                });
+                if (!res || !res.prenom.trim() || !res.nom.trim()) return;
+                try {
+                    await updateDoc(doc(db, "utilisateurs", joueur.id), {
+                        prenom: res.prenom.trim(),
+                        nom: res.nom.trim(),
+                        poste: res.poste.trim() || 'Milieu'
+                    });
+                    joueur.prenom = res.prenom.trim();
+                    joueur.nom = res.nom.trim();
+                    joueur.poste = res.poste.trim() || 'Milieu';
+                    trierJoueurs();
+                    afficher();
+                    toast('Joueur mis à jour');
+                } catch (err) {
+                    toast("Erreur : " + err.message, 'error');
+                }
+                return;
+            }
+
+            // Suppression unitaire immédiate
+            const btnSuppr = e.target.closest('.btn-supprimer');
+            if (!btnSuppr) return;
+            const joueur = listeJoueurs.find(j => j.id === btnSuppr.dataset.id);
             const nomJoueur = `${joueur?.prenom || ''} ${joueur?.nom || ''}`.trim();
-            const ok = await confirmer(`${nomJoueur} sera supprimé définitivement du club, ainsi que des statistiques.`, {
+            const ok = await confirmer(`${nomJoueur} sera supprimé définitivement du club.`, {
                 titre: 'Supprimer ce joueur ?', ok: 'Supprimer', danger: true
             });
             if (!ok) return;
             try {
-                await deleteDoc(doc(db, "utilisateurs", btn.dataset.id));
+                await deleteDoc(doc(db, "utilisateurs", btnSuppr.dataset.id));
+                listeJoueurs = listeJoueurs.filter(j => j.id !== btnSuppr.dataset.id);
+                majResume();
+                afficher();
                 toast(`${nomJoueur} a été supprimé.`);
-                chargerTousLesJoueurs();
             } catch (error) {
                 toast("Erreur lors de la suppression : " + error.message, 'error');
             }

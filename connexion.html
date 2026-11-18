@@ -17,28 +17,83 @@
         <h1>Connexion</h1>
         <p class="muted">Accédez à votre espace joueur / admin.</p>
 
+        <div class="onglets" role="tablist" style="margin-bottom: 16px;">
+            <button type="button" class="btn-onglet actif" data-mode="password">🔑 Mot de passe</button>
+            <button type="button" class="btn-onglet" data-mode="magic">✉️ Lien par mail</button>
+        </div>
+
+        <!-- Mode 1 : Email + Mot de passe -->
         <form id="form-connexion">
             <label for="in-email">Adresse email</label>
             <input type="email" id="in-email" placeholder="vous@exemple.fr" autocomplete="email" required>
+
             <label for="in-password">Mot de passe</label>
-            <input type="password" id="in-password" placeholder="••••••••" autocomplete="current-password" required>
+            <div class="pw-wrap">
+                <input type="password" id="in-password" placeholder="••••••••" autocomplete="current-password" required>
+                <button type="button" class="pw-toggle" id="btn-toggle-pw" title="Afficher le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
+            </div>
+
+            <div class="auth-links-row">
+                <button type="button" class="btn-link" id="btn-mdp-oublie">Mot de passe oublié ?</button>
+            </div>
+
             <button class="btn" type="submit" id="btn-connecter">Se connecter</button>
         </form>
 
-        <a href="inscription.html" class="lien">Pas encore de compte ? <strong>S'inscrire</strong></a>
+        <!-- Mode 2 : Connexion sans mot de passe (lien envoyé par email) -->
+        <form id="form-magic" class="hidden">
+            <label for="in-email-magic">Votre adresse email</label>
+            <input type="email" id="in-email-magic" placeholder="vous@exemple.fr" autocomplete="email" required>
+            <p class="muted" style="font-size: .83rem; margin: 8px 0 4px;">
+                Nous vous enverrons un lien de connexion instantané par e-mail, sans mot de passe.
+            </p>
+            <button class="btn" type="submit" id="btn-magic">✉️ Recevoir le lien par mail</button>
+        </form>
+
+        <a href="inscription.html" class="lien">Pas encore de compte ? <strong>S'inscrire avec un mail</strong></a>
     </div>
 
     <script type="module">
-        import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { auth } from "./js/firebase.js";
-        import { toast, chargement, afficherFlash } from "./js/ui.js";
+        import {
+            signInWithEmailAndPassword,
+            sendPasswordResetEmail,
+            sendSignInLinkToEmail,
+            isSignInWithEmailLink,
+            signInWithEmailLink
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { auth, db } from "./js/firebase.js";
+        import { toast, flash, formulaire, chargement, afficherFlash } from "./js/ui.js";
 
         afficherFlash();
 
-        document.getElementById('form-connexion').addEventListener('submit', async (e) => {
+        // Bascule entre connexion par mot de passe et lien par mail
+        const formPassword = document.getElementById('form-connexion');
+        const formMagic = document.getElementById('form-magic');
+        document.querySelectorAll('[data-mode]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('actif', b === btn));
+                const isMagic = btn.dataset.mode === 'magic';
+                formPassword.classList.toggle('hidden', isMagic);
+                formMagic.classList.toggle('hidden', !isMagic);
+                if (isMagic && document.getElementById('in-email').value) {
+                    document.getElementById('in-email-magic').value = document.getElementById('in-email').value;
+                }
+            });
+        });
+
+        // Afficher / masquer le mot de passe
+        const inPw = document.getElementById('in-password');
+        document.getElementById('btn-toggle-pw').addEventListener('click', () => {
+            const visible = inPw.type === 'text';
+            inPw.type = visible ? 'password' : 'text';
+        });
+
+        // Connexion standard Email + Mot de passe
+        formPassword.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('in-email').value.trim();
-            const password = document.getElementById('in-password').value;
+            const password = inPw.value;
             if (!email || !password) return toast("Veuillez remplir tous les champs.", 'error');
 
             const bouton = document.getElementById('btn-connecter');
@@ -52,12 +107,95 @@
                     toast("Email ou mot de passe incorrect.", 'error');
                 } else if (error.code === 'auth/invalid-email') {
                     toast("L'adresse email n'est pas valide.", 'error');
+                } else if (error.code === 'auth/too-many-requests') {
+                    toast("Trop de tentatives. Réessayez plus tard ou réinitialisez votre mot de passe.", 'error');
                 } else {
                     toast("Erreur lors de la connexion : " + error.message, 'error');
                 }
                 chargement(bouton, false);
             }
         });
+
+        // Mot de passe oublié -> envoi d'un email de réinitialisation
+        document.getElementById('btn-mdp-oublie').addEventListener('click', async () => {
+            const emailActuel = document.getElementById('in-email').value.trim();
+            const res = await formulaire({
+                titre: 'Mot de passe oublié ?',
+                texte: 'Entrez votre adresse e-mail pour recevoir un lien de réinitialisation.',
+                ok: 'Envoyer le mail',
+                champs: [
+                    { nom: 'email', label: 'Adresse e-mail du compte', type: 'email', valeur: emailActuel, placeholder: 'vous@exemple.fr' }
+                ]
+            });
+            if (!res || !res.email.trim()) return;
+            try {
+                await sendPasswordResetEmail(auth, res.email.trim());
+                toast(`Un e-mail de réinitialisation a été envoyé à ${res.email.trim()}.`, 'success', 5000);
+            } catch (err) {
+                console.error(err);
+                toast("Impossible d'envoyer l'e-mail : vérifiez l'adresse saisie.", 'error');
+            }
+        });
+
+        // Connexion par lien envoyé par mail (Passwordless)
+        formMagic.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('in-email-magic').value.trim();
+            if (!email) return toast("Veuillez saisir votre adresse e-mail.", 'error');
+
+            const bouton = document.getElementById('btn-magic');
+            chargement(bouton, true, 'Envoi du lien…');
+            try {
+                const actionCodeSettings = {
+                    url: window.location.origin + window.location.pathname,
+                    handleCodeInApp: true
+                };
+                await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+                window.localStorage.setItem('chalosseEmailForSignIn', email);
+                toast(`Lien envoyé à ${email} ! Consultez votre boîte mail.`, 'success', 6000);
+            } catch (err) {
+                console.error(err);
+                toast("Envoi impossible (" + (err.code || err.message) + "). Utilisez la connexion avec mot de passe.", 'error', 5000);
+            } finally {
+                chargement(bouton, false);
+            }
+        });
+
+        // Retour depuis le lien reçu par e-mail
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+            (async () => {
+                let email = window.localStorage.getItem('chalosseEmailForSignIn');
+                if (!email) {
+                    const res = await formulaire({
+                        titre: 'Confirmez votre e-mail',
+                        texte: 'Saisissez votre adresse e-mail pour finaliser la connexion.',
+                        ok: 'Valider',
+                        champs: [{ nom: 'email', label: 'Adresse e-mail', type: 'email', placeholder: 'vous@exemple.fr' }]
+                    });
+                    email = res?.email?.trim();
+                }
+                if (!email) return;
+                try {
+                    const { user } = await signInWithEmailLink(auth, email, window.location.href);
+                    window.localStorage.removeItem('chalosseEmailForSignIn');
+                    const snap = await getDoc(doc(db, "utilisateurs", user.uid));
+                    if (!snap.exists()) {
+                        const pseudo = email.split('@')[0];
+                        await setDoc(doc(db, "utilisateurs", user.uid), {
+                            prenom: pseudo.charAt(0).toUpperCase() + pseudo.slice(1),
+                            nom: '',
+                            email: email,
+                            role: 'utilisateur'
+                        });
+                    }
+                    flash("Connexion par mail réussie !");
+                    window.location.href = "index.html";
+                } catch (err) {
+                    console.error(err);
+                    toast("Ce lien de connexion a expiré ou n'est plus valide.", 'error');
+                }
+            })();
+        }
     </script>
 </body>
 </html>

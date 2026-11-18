@@ -16,28 +16,36 @@
     <main class="container">
         <header class="page-header">
             <h1><img src="chalosse.webp" alt="" class="logo-header"> Compositions</h1>
-            <p>Choisissez un match puis cochez les joueurs convoqués.</p>
+            <p>Choisissez l'équipe puis sélectionnez un match pour composer le groupe.</p>
         </header>
 
         <div class="card">
-            <div class="form-row">
-                <div>
-                    <label for="select-premiere" style="margin-top:0">🔵 Équipe Première</label>
-                    <select id="select-premiere" class="team-select-premiere">
-                        <option value="">Chargement…</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="select-reserve">🟢 Équipe Réserve</label>
-                    <select id="select-reserve" class="team-select-reserve">
-                        <option value="">Chargement…</option>
-                    </select>
-                </div>
+            <label style="margin-top:0">1. Choisir l'équipe</label>
+            <div class="choice-grid" id="choix-equipe" style="margin-bottom: 16px;">
+                <button type="button" class="choice-card premiere active" data-equipe="premiere">
+                    <span class="choice-ic">🔵</span>
+                    <span>Équipe Première</span>
+                    <span class="choice-sub" id="sub-nb-premiere">Chargement…</span>
+                </button>
+                <button type="button" class="choice-card reserve" data-equipe="reserve">
+                    <span class="choice-ic">🟢</span>
+                    <span>Équipe Réserve</span>
+                    <span class="choice-sub" id="sub-nb-reserve">Chargement…</span>
+                </button>
             </div>
+
+            <label>2. Choisir le match</label>
+            <div id="picker-match"></div>
         </div>
 
         <div id="zone-joueurs" class="hidden">
-            <h2 class="titre-section">Joueurs <span class="count">triés par nombre d'apparitions</span></h2>
+            <div class="toolbar-row" style="margin-top: 24px;">
+                <h2 class="titre-section" style="margin: 0;">Joueurs <span class="count">triés par apparitions</span></h2>
+                <div class="toolbar-actions">
+                    <button type="button" class="btn-chip" id="btn-vider-compo">Tout décocher</button>
+                </div>
+            </div>
+
             <div class="search">
                 <input type="search" id="recherche" placeholder="Filtrer les joueurs…" autocomplete="off">
             </div>
@@ -54,15 +62,20 @@
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, flash, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { toast, flash, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
 
+        let equipeActive = 'premiere';
         let matchActifId = null;
         let listeTousLesJoueurs = [];
+        let tousLesMatchs = [];
         let compteursApparitions = {};
 
-        const selPremiere = document.getElementById('select-premiere');
-        const selReserve = document.getElementById('select-reserve');
+        const selectMatch = creerSelectCustom('picker-match', {
+            placeholder: 'Sélectionner un match de la Première…',
+            iconePlaceholder: '⚽',
+            onChange: (id) => chargerCompoDuMatch(id)
+        });
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
@@ -85,25 +98,21 @@
                 usersSnap.forEach(u => {
                     const data = u.data();
                     if (data.prenom && (data.role === "joueur" || data.role === "admin")) {
-                        listeTousLesJoueurs.push({ id: u.id, nom: `${data.prenom} ${data.nom}` });
+                        listeTousLesJoueurs.push({ id: u.id, nom: `${data.prenom} ${data.nom}`, poste: data.poste || '' });
                         compteursApparitions[u.id] = { premiere: 0, reserve: 0 };
                     }
                 });
 
                 // 2. Matchs + calcul des anciennes compos
                 const matchsSnap = await getDocs(collection(db, "matchs"));
-                const matchs = [];
-                matchsSnap.forEach(d => matchs.push({ id: d.id, data: d.data() }));
-                trierParDate(matchs);
+                tousLesMatchs = [];
+                matchsSnap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+                trierParDate(tousLesMatchs);
 
-                let optionsPremiere = '<option value="">— Choisir un match de la Première —</option>';
-                let optionsReserve = '<option value="">— Choisir un match de la Réserve —</option>';
-
-                matchs.forEach(({ id, data }) => {
+                let nbP = 0, nbR = 0;
+                tousLesMatchs.forEach(({ data }) => {
                     const typeEquipe = data.equipe_type === "premiere" ? "premiere" : "reserve";
-                    const option = `<option value="${id}">${echapper(data.adversaire)} · ${echapper(formaterDate(data.date))}</option>`;
-                    if (typeEquipe === "premiere") optionsPremiere += option;
-                    else optionsReserve += option;
+                    if (typeEquipe === "premiere") nbP++; else nbR++;
 
                     if (Array.isArray(data.compo)) {
                         data.compo.forEach(joueurId => {
@@ -112,32 +121,55 @@
                     }
                 });
 
-                const valP = selPremiere.value, valR = selReserve.value;
-                selPremiere.innerHTML = optionsPremiere;
-                selReserve.innerHTML = optionsReserve;
-                selPremiere.value = valP;
-                selReserve.value = valR;
+                document.getElementById('sub-nb-premiere').textContent = `${nbP} match${nbP > 1 ? 's' : ''}`;
+                document.getElementById('sub-nb-reserve').textContent = `${nbR} match${nbR > 1 ? 's' : ''}`;
+
+                rafraichirMenuMatchs(true);
             } catch (error) {
                 console.error("Erreur de chargement :", error);
                 toast("Erreur de chargement des données.", 'error');
             }
         }
 
-        async function changerMatch(equipeSelectionnee) {
-            if (equipeSelectionnee === 'premiere') {
-                selReserve.value = "";
-                matchActifId = selPremiere.value;
-            } else {
-                selPremiere.value = "";
-                matchActifId = selReserve.value;
+        function rafraichirMenuMatchs(garderSelection = false) {
+            const matchsEquipe = tousLesMatchs.filter(m =>
+                (m.data.equipe_type === 'premiere' ? 'premiere' : 'reserve') === equipeActive
+            );
+            const options = matchsEquipe.map(({ id, data }) => {
+                const nb = Array.isArray(data.compo) ? data.compo.length : 0;
+                return {
+                    value: id,
+                    dot: equipeActive,
+                    label: `Contre ${data.adversaire || 'Adversaire'}`,
+                    sub: formaterDate(data.date),
+                    badge: nb > 0 ? `${nb} joueur${nb > 1 ? 's' : ''}` : 'À faire',
+                    badgeClass: nb > 0 ? 'ok' : 'warn'
+                };
+            });
+            selectMatch.setOptions(options, garderSelection);
+            if (!garderSelection) {
+                matchActifId = null;
+                document.getElementById('zone-joueurs').classList.add('hidden');
             }
+        }
 
+        // Bascule Équipe Première / Réserve
+        document.querySelectorAll('#choix-equipe [data-equipe]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b => b.classList.toggle('active', b === btn));
+                equipeActive = btn.dataset.equipe;
+                rafraichirMenuMatchs(false);
+            });
+        });
+
+        async function chargerCompoDuMatch(idMatch) {
+            matchActifId = idMatch;
             const zone = document.getElementById('zone-joueurs');
             if (!matchActifId) { zone.classList.add('hidden'); return; }
 
             listeTousLesJoueurs.sort((a, b) => {
-                const nbA = compteursApparitions[a.id][equipeSelectionnee];
-                const nbB = compteursApparitions[b.id][equipeSelectionnee];
+                const nbA = compteursApparitions[a.id]?.[equipeActive] || 0;
+                const nbB = compteursApparitions[b.id]?.[equipeActive] || 0;
                 if (nbB !== nbA) return nbB - nbA;
                 return a.nom.localeCompare(b.nom);
             });
@@ -147,7 +179,7 @@
 
             document.getElementById('liste-joueurs').innerHTML = listeTousLesJoueurs.map(joueur => {
                 const coche = compoEnregistree.includes(joueur.id) ? "checked" : "";
-                const nb = compteursApparitions[joueur.id][equipeSelectionnee];
+                const nb = compteursApparitions[joueur.id]?.[equipeActive] || 0;
                 const badge = nb > 0 ? `<span class="stats-badge">${nb} match${nb > 1 ? 's' : ''}</span>` : "";
                 return `
                     <label class="joueur-ligne" data-nom="${echapper(joueur.nom.toLowerCase())}">
@@ -168,8 +200,11 @@
             document.getElementById('nb-selection').textContent = document.querySelectorAll('.checkbox-compo:checked').length;
         }
 
-        selPremiere.addEventListener('change', () => changerMatch('premiere'));
-        selReserve.addEventListener('change', () => changerMatch('reserve'));
+        document.getElementById('btn-vider-compo').addEventListener('click', () => {
+            document.querySelectorAll('.checkbox-compo:checked').forEach(c => { c.checked = false; });
+            majCompteur();
+        });
+
         document.getElementById('liste-joueurs').addEventListener('change', majCompteur);
         document.getElementById('recherche').addEventListener('input', (e) => {
             const q = e.target.value.trim().toLowerCase();

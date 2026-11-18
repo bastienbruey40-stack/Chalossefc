@@ -19,13 +19,23 @@
             <p>Tous les matchs de la saison, triés par date.</p>
         </header>
 
+        <div class="toolbar-row">
+            <div class="search">
+                <input type="search" id="recherche-match" placeholder="Rechercher un adversaire ou une date…" autocomplete="off">
+            </div>
+            <div class="toolbar-actions hidden" id="outils-admin">
+                <button type="button" class="btn-chip" id="btn-mode-select">☑️ Sélection multiple</button>
+                <a href="ajouter_match.html" class="btn-chip primary">➕ Nouveau match</a>
+            </div>
+        </div>
+
         <div class="onglets" role="tablist">
             <button class="btn-onglet actif" data-filtre="tous">Tous</button>
             <button class="btn-onglet" data-filtre="avenir">À venir</button>
             <button class="btn-onglet" data-filtre="joues">Résultats</button>
         </div>
 
-        <div class="grid-2">
+        <div class="grid-2" id="zone-matchs">
             <section>
                 <h2 class="titre-section titre-premiere">Équipe Première <span class="count" id="nb-premiere">–</span></h2>
                 <div id="matchs-premiere" class="match-list"><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -35,22 +45,36 @@
                 <div id="matchs-reserve" class="match-list"><div class="skeleton"></div><div class="skeleton"></div></div>
             </section>
         </div>
+
+        <!-- Barre flottante de suppression groupée -->
+        <div class="sticky-actions hidden" id="barre-selection">
+            <span class="sticky-info"><strong id="nb-select">0</strong> match(s) sélectionné(s)</span>
+            <button type="button" class="btn-chip" id="btn-tout-cocher">Tout cocher</button>
+            <button type="button" class="btn" id="btn-suppr-lot" style="background:var(--rouge); color:#fff; margin-top:0">🗑️ Supprimer</button>
+        </div>
     </main>
 
     <script type="module">
-        import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { toast, confirmer, chargement, formaterDate } from "./js/ui.js";
         import { carteMatch, activerActionsMatchs, trierParDate, estJoue } from "./js/matchs.js";
 
         let estAdmin = false;
         let tousLesMatchs = [];
         let filtre = 'tous';
+        let modeSelection = false;
+        const selection = new Set();
+
+        const btnModeSelect = document.getElementById('btn-mode-select');
+        const barreSelection = document.getElementById('barre-selection');
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
             const profil = await chargerProfil(user.uid).catch(() => null);
             estAdmin = profil?.role === "admin";
+            if (estAdmin) document.getElementById('outils-admin').classList.remove('hidden');
             chargerMatchs();
         });
 
@@ -68,24 +92,107 @@
             }
         }
 
-        function afficher() {
-            const garder = (m) => filtre === 'tous' || (filtre === 'joues' ? estJoue(m.data) : !estJoue(m.data));
+        function matchsFiltres() {
+            const q = document.getElementById('recherche-match').value.trim().toLowerCase();
+            const garder = (m) => {
+                const okStatut = filtre === 'tous' || (filtre === 'joues' ? estJoue(m.data) : !estJoue(m.data));
+                const okTexte = !q || `${m.data.adversaire || ''} ${m.data.date || ''} ${formaterDate(m.data.date)}`.toLowerCase().includes(q);
+                return okStatut && okTexte;
+            };
             const liste = tousLesMatchs.filter(garder);
-            // Résultats : du plus récent au plus ancien
             if (filtre === 'joues') liste.reverse();
+            return liste;
+        }
 
+        function afficher() {
+            const liste = matchsFiltres();
             const premiere = liste.filter(m => m.data.equipe_type === "premiere");
             const reserve = liste.filter(m => m.data.equipe_type !== "premiere");
             rendre('matchs-premiere', 'nb-premiere', premiere);
             rendre('matchs-reserve', 'nb-reserve', reserve);
+            majBarreSelection(liste);
         }
 
         function rendre(idListe, idCompteur, liste) {
             document.getElementById(idCompteur).textContent = `${liste.length} match${liste.length > 1 ? 's' : ''}`;
             document.getElementById(idListe).innerHTML = liste.length
-                ? liste.map(m => carteMatch(m.id, m.data, { admin: estAdmin, gestion: true })).join('')
+                ? liste.map(m => carteMatch(m.id, m.data, {
+                    admin: estAdmin,
+                    gestion: true,
+                    modeSelection: modeSelection,
+                    selectionne: selection.has(m.id)
+                })).join('')
                 : `<p class="empty">Aucun match.</p>`;
         }
+
+        function majBarreSelection(liste = matchsFiltres()) {
+            if (!modeSelection) {
+                barreSelection.classList.add('hidden');
+                return;
+            }
+            barreSelection.classList.remove('hidden');
+            document.getElementById('nb-select').textContent = selection.size;
+            const toutEstCoche = liste.length > 0 && liste.every(m => selection.has(m.id));
+            document.getElementById('btn-tout-cocher').textContent = toutEstCoche ? 'Tout décocher' : 'Tout cocher';
+            document.getElementById('btn-suppr-lot').disabled = selection.size === 0;
+        }
+
+        btnModeSelect.addEventListener('click', () => {
+            modeSelection = !modeSelection;
+            selection.clear();
+            btnModeSelect.classList.toggle('active', modeSelection);
+            btnModeSelect.textContent = modeSelection ? '✕ Quitter la sélection' : '☑️ Sélection multiple';
+            afficher();
+        });
+
+        document.getElementById('btn-tout-cocher').addEventListener('click', () => {
+            const liste = matchsFiltres();
+            const toutEstCoche = liste.length > 0 && liste.every(m => selection.has(m.id));
+            liste.forEach(m => toutEstCoche ? selection.delete(m.id) : selection.add(m.id));
+            afficher();
+        });
+
+        document.getElementById('btn-suppr-lot').addEventListener('click', async () => {
+            if (selection.size === 0) return;
+            const ids = [...selection];
+            const ok = await confirmer(
+                `Voulez-vous supprimer définitivement les ${ids.length} match(s) sélectionné(s) ?`,
+                { titre: `Supprimer ${ids.length} match(s) ?`, ok: `Supprimer (${ids.length})`, danger: true }
+            );
+            if (!ok) return;
+
+            const btn = document.getElementById('btn-suppr-lot');
+            chargement(btn, true, 'Suppression…');
+            try {
+                await Promise.all(ids.map(id => deleteDoc(doc(db, "matchs", id))));
+                tousLesMatchs = tousLesMatchs.filter(m => !selection.has(m.id));
+                selection.clear();
+                modeSelection = false;
+                btnModeSelect.classList.remove('active');
+                btnModeSelect.textContent = '☑️ Sélection multiple';
+                afficher();
+                toast(`${ids.length} match(s) supprimé(s).`);
+            } catch (err) {
+                toast("Erreur : " + err.message, 'error');
+            } finally {
+                chargement(btn, false);
+            }
+        });
+
+        document.getElementById('zone-matchs').addEventListener('click', (e) => {
+            if (!modeSelection) return;
+            const carte = e.target.closest('[data-match-id]');
+            if (!carte) return;
+            e.preventDefault();
+            const id = carte.dataset.matchId;
+            selection.has(id) ? selection.delete(id) : selection.add(id);
+            carte.classList.toggle('selected', selection.has(id));
+            const pill = carte.querySelector('.match-select-pill');
+            if (pill) pill.textContent = selection.has(id) ? '✓ Sélectionné' : '☐ Sélectionner';
+            majBarreSelection();
+        });
+
+        document.getElementById('recherche-match').addEventListener('input', afficher);
 
         document.querySelectorAll('[data-filtre]').forEach(btn => btn.addEventListener('click', () => {
             document.querySelectorAll('[data-filtre]').forEach(b => b.classList.toggle('actif', b === btn));

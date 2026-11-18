@@ -1,4 +1,4 @@
-// Petits composants d'interface réutilisables : notifications, fenêtres de dialogue, dates.
+// Petits composants d'interface réutilisables : notifications, fenêtres de dialogue, menus déroulants modernes, dates.
 
 function racine() {
     let r = document.getElementById('ui-root');
@@ -59,7 +59,7 @@ export function afficherFlash() {
 }
 
 /* ---------- Fenêtres de dialogue ---------- */
-function ouvrirModal(construire) {
+export function ouvrirModal(construire) {
     return new Promise(resolve => {
         const fond = document.createElement('div');
         fond.className = 'modal-backdrop';
@@ -168,6 +168,164 @@ export function formulaire({ titre, texte = '', champs = [], ok = 'Enregistrer',
         });
         boite.appendChild(form);
     });
+}
+
+/* ---------- Menu déroulant moderne (remplace <select>) ---------- */
+export function creerSelectCustom(cible, {
+    placeholder = 'Choisir une option…',
+    iconePlaceholder = '📅',
+    options = [],
+    valeur = '',
+    onChange = () => {}
+} = {}) {
+    const racineEl = typeof cible === 'string' ? document.getElementById(cible) : cible;
+    if (!racineEl) return null;
+
+    let listeOptions = options;
+    let valeurActuelle = valeur;
+    let ouvert = false;
+
+    racineEl.className = 'cselect';
+    racineEl.innerHTML = `
+        <button type="button" class="cselect-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="cselect-trigger-body"></span>
+            <span class="cselect-chevron" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+        </button>
+        <div class="cselect-menu" role="listbox">
+            <div class="cselect-search-wrap hidden">
+                <input type="search" class="cselect-search" placeholder="Rechercher…" autocomplete="off">
+            </div>
+            <div class="cselect-list"></div>
+        </div>
+    `;
+
+    const btnTrigger = racineEl.querySelector('.cselect-trigger');
+    const bodyTrigger = racineEl.querySelector('.cselect-trigger-body');
+    const searchWrap = racineEl.querySelector('.cselect-search-wrap');
+    const inputSearch = racineEl.querySelector('.cselect-search');
+    const listeEl = racineEl.querySelector('.cselect-list');
+
+    function rendreTrigger() {
+        const opt = listeOptions.find(o => o.value === valeurActuelle);
+        if (!opt) {
+            bodyTrigger.innerHTML = `
+                <span class="cselect-ic">${echapper(iconePlaceholder)}</span>
+                <span class="cselect-texts">
+                    <span class="cselect-placeholder">${echapper(placeholder)}</span>
+                </span>
+            `;
+            racineEl.classList.remove('has-value');
+            return;
+        }
+        racineEl.classList.add('has-value');
+        const dot = opt.dot ? `<span class="cselect-dot ${echapper(opt.dot)}"></span>` : (opt.icon ? `<span class="cselect-ic">${echapper(opt.icon)}</span>` : '');
+        const sub = opt.sub ? `<span class="cselect-sub">${echapper(opt.sub)}</span>` : '';
+        const badge = opt.badge ? `<span class="cselect-badge ${echapper(opt.badgeClass || '')}">${echapper(opt.badge)}</span>` : '';
+        bodyTrigger.innerHTML = `
+            ${dot}
+            <span class="cselect-texts">
+                <span class="cselect-title">${echapper(opt.label)}</span>
+                ${sub}
+            </span>
+            ${badge}
+        `;
+    }
+
+    function rendreOptions(filtre = '') {
+        const q = filtre.trim().toLowerCase();
+        const filtrees = listeOptions.filter(o =>
+            !q || `${o.label} ${o.sub || ''} ${o.badge || ''}`.toLowerCase().includes(q)
+        );
+        searchWrap.classList.toggle('hidden', listeOptions.length < 5);
+
+        if (filtrees.length === 0) {
+            listeEl.innerHTML = `<div class="cselect-empty">${listeOptions.length === 0 ? 'Aucune option disponible' : 'Aucun résultat'}</div>`;
+            return;
+        }
+
+        listeEl.innerHTML = filtrees.map(o => {
+            const actif = o.value === valeurActuelle;
+            const dot = o.dot ? `<span class="cselect-dot ${echapper(o.dot)}"></span>` : (o.icon ? `<span class="cselect-ic">${echapper(o.icon)}</span>` : '');
+            const sub = o.sub ? `<span class="cselect-sub">${echapper(o.sub)}</span>` : '';
+            const badge = o.badge ? `<span class="cselect-badge ${echapper(o.badgeClass || '')}">${echapper(o.badge)}</span>` : '';
+            return `
+                <button type="button" class="cselect-option${actif ? ' active' : ''}" role="option" aria-selected="${actif}" data-value="${echapper(o.value)}">
+                    ${dot}
+                    <span class="cselect-texts">
+                        <span class="cselect-title">${echapper(o.label)}</span>
+                        ${sub}
+                    </span>
+                    ${badge}
+                    <span class="cselect-check" aria-hidden="true">✓</span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    function ouvrir() {
+        if (ouvert) return;
+        document.querySelectorAll('.cselect.open').forEach(el => el.classList.remove('open'));
+        ouvert = true;
+        racineEl.classList.add('open');
+        btnTrigger.setAttribute('aria-expanded', 'true');
+        inputSearch.value = '';
+        rendreOptions('');
+        if (listeOptions.length >= 5) setTimeout(() => inputSearch.focus(), 40);
+    }
+
+    function fermer() {
+        if (!ouvert) return;
+        ouvert = false;
+        racineEl.classList.remove('open');
+        btnTrigger.setAttribute('aria-expanded', 'false');
+    }
+
+    btnTrigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ouvert ? fermer() : ouvrir();
+    });
+
+    inputSearch.addEventListener('input', () => rendreOptions(inputSearch.value));
+    inputSearch.addEventListener('click', (e) => e.stopPropagation());
+
+    listeEl.addEventListener('click', (e) => {
+        const optBtn = e.target.closest('.cselect-option');
+        if (!optBtn) return;
+        valeurActuelle = optBtn.dataset.value;
+        rendreTrigger();
+        fermer();
+        onChange(valeurActuelle);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (ouvert && !racineEl.contains(e.target)) fermer();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (ouvert && e.key === 'Escape') fermer();
+    });
+
+    rendreTrigger();
+    rendreOptions();
+
+    return {
+        getValue: () => valeurActuelle,
+        setValue: (val, declencher = false) => {
+            valeurActuelle = val;
+            rendreTrigger();
+            rendreOptions(inputSearch.value);
+            if (declencher) onChange(valeurActuelle);
+        },
+        setOptions: (nouvellesOptions, garderValeur = true) => {
+            listeOptions = nouvellesOptions;
+            if (!garderValeur || !listeOptions.some(o => o.value === valeurActuelle)) {
+                valeurActuelle = '';
+            }
+            rendreTrigger();
+            rendreOptions(inputSearch.value);
+        }
+    };
 }
 
 /* ---------- Bouton en cours de chargement ---------- */

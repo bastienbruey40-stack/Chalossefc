@@ -1,7 +1,7 @@
 // Navigation responsive : barre latérale (ordinateur) + barre d'onglets en bas (mobile/tablette)
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { onAuthStateChanged, signOut, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { auth, chargerProfil } from "./firebase.js";
-import { afficherFlash, confirmer, initiales } from "./ui.js";
+import { afficherFlash, confirmer, ouvrirModal, toast, initiales, echapper } from "./ui.js";
 
 const SVG = {
     home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
@@ -42,7 +42,7 @@ function lienLateral(item) {
 }
 
 const blocUtilisateur = `
-    <div class="user-chip">
+    <div class="user-chip clickable" title="Voir les détails de mon compte">
         <span class="avatar">?</span>
         <span class="user-meta"><strong class="user-name">Chargement…</strong><span class="user-email"></span></span>
     </div>`;
@@ -96,6 +96,63 @@ bottom.querySelector('.btn-menu').addEventListener('click', ouvrirMenu);
 sheet.querySelector('.sheet-backdrop').addEventListener('click', fermerMenu);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerMenu(); });
 
+let utilisateurCourant = null;
+let profilCourant = null;
+
+// Modale "Mon compte" affichant clairement l'adresse e-mail liée au compte
+function afficherMonCompte() {
+    if (!utilisateurCourant) return;
+    fermerMenu();
+    const email = utilisateurCourant.email || 'Aucune adresse mail';
+    const nom = profilCourant?.prenom
+        ? `${profilCourant.prenom} ${profilCourant.nom || ''}`.trim()
+        : email.split('@')[0];
+    const role = profilCourant?.role === 'admin' ? 'Administrateur' : 'Utilisateur / Joueur';
+
+    ouvrirModal((boite, fermer) => {
+        boite.innerHTML = `
+            <h3 class="modal-title">👤 Mon compte</h3>
+            <p class="modal-text">Informations du compte actuellement connecté</p>
+            <div class="account-info-list">
+                <div class="account-info-item">
+                    <div>
+                        <small>Adresse e-mail liée</small>
+                        <strong>✉️ ${echapper(email)}</strong>
+                    </div>
+                    <button type="button" class="btn-chip" id="btn-copier-mail">Copier</button>
+                </div>
+                <div class="account-info-item">
+                    <div>
+                        <small>Nom</small>
+                        <strong>${echapper(nom)}</strong>
+                    </div>
+                    <span class="tag ${profilCourant?.role === 'admin' ? 'admin' : 'user'}">${echapper(role)}</span>
+                </div>
+            </div>
+            <div class="modal-actions" style="flex-direction: column;">
+                <button type="button" class="btn-modal btn-modal-cancel" id="btn-reset-mail">🔑 Changer de mot de passe par mail</button>
+                <button type="button" class="btn-modal btn-modal-ok" id="btn-fermer-compte">Fermer</button>
+            </div>
+        `;
+        boite.querySelector('#btn-fermer-compte').onclick = () => fermer();
+        boite.querySelector('#btn-copier-mail').onclick = () => {
+            navigator.clipboard?.writeText(email);
+            toast('Adresse e-mail copiée !');
+        };
+        boite.querySelector('#btn-reset-mail').onclick = async () => {
+            try {
+                await sendPasswordResetEmail(auth, email);
+                toast(`E-mail de changement de mot de passe envoyé à ${email}`);
+                fermer();
+            } catch (e) {
+                toast("Erreur : " + e.message, 'error');
+            }
+        };
+    });
+}
+
+document.querySelectorAll('.user-chip').forEach(chip => chip.addEventListener('click', afficherMonCompte));
+
 document.querySelectorAll('.nav-logout').forEach(btn => btn.addEventListener('click', async () => {
     fermerMenu();
     const ok = await confirmer('Vous devrez vous reconnecter pour accéder à l\'application.', {
@@ -107,6 +164,7 @@ document.querySelectorAll('.nav-logout').forEach(btn => btn.addEventListener('cl
 }));
 
 onAuthStateChanged(auth, async (user) => {
+    utilisateurCourant = user;
     const noms = document.querySelectorAll('.user-name');
     const emails = document.querySelectorAll('.user-email');
     const avatars = document.querySelectorAll('.avatar');
@@ -117,6 +175,7 @@ onAuthStateChanged(auth, async (user) => {
     emails.forEach(e => e.textContent = user.email || '');
     let profil = null;
     try { profil = await chargerProfil(user.uid); } catch (e) { console.error(e); }
+    profilCourant = profil;
     const nom = profil?.prenom ? `${profil.prenom} ${profil.nom || ''}`.trim() : (user.email || 'Utilisateur').split('@')[0];
     noms.forEach(e => e.textContent = nom);
     avatars.forEach(e => e.textContent = profil?.prenom ? initiales(profil.prenom, profil.nom) : nom.charAt(0).toUpperCase());
@@ -130,4 +189,3 @@ afficherFlash();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
-

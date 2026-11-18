@@ -13,7 +13,7 @@ export function trierParDate(liste) {
     return liste.sort((a, b) => (versDate(a.data.date)?.getTime() ?? Infinity) - (versDate(b.data.date)?.getTime() ?? Infinity));
 }
 
-export function carteMatch(id, d, { admin = false, gestion = false } = {}) {
+export function carteMatch(id, d, { admin = false, gestion = false, modeSelection = false, selectionne = false } = {}) {
     cache.set(id, d);
     const adv = echapper(d.adversaire || 'Adversaire');
     const logoAdv = d.logo
@@ -32,14 +32,19 @@ export function carteMatch(id, d, { admin = false, gestion = false } = {}) {
         if (date && date.getTime() >= Date.now() - 86400000) badge = `<span class="result-badge upcoming">À venir</span>`;
     }
 
-    const btnScore = admin ? `<button type="button" class="btn-score-match" data-id="${id}" title="Modifier le score" aria-label="Modifier le score">✏️</button>` : '';
-    const btnSuppr = admin && gestion ? `<button type="button" class="btn-supprimer-match" data-id="${id}" title="Supprimer le match" aria-label="Supprimer le match">🗑️</button>` : '';
-    const btnDate = admin && gestion ? `<button type="button" class="btn-date" data-id="${id}" title="Modifier la date" aria-label="Modifier la date">🗓️</button>` : '';
+    const afficherActionsAdmin = admin && !modeSelection;
+    const btnScore = afficherActionsAdmin ? `<button type="button" class="btn-score-match" data-id="${id}" title="Modifier le score" aria-label="Modifier le score">✏️</button>` : '';
+    const btnSuppr = afficherActionsAdmin && gestion ? `<button type="button" class="btn-supprimer-match" data-id="${id}" title="Supprimer le match" aria-label="Supprimer le match">🗑️</button>` : '';
+    const btnDate = afficherActionsAdmin && gestion ? `<button type="button" class="btn-date" data-id="${id}" title="Modifier la date" aria-label="Modifier la date">🗓️</button>` : '';
+    const pillSelect = modeSelection
+        ? `<span class="match-select-pill">${selectionne ? '✓ Sélectionné' : '☐ Sélectionner'}</span>`
+        : '';
 
     return `
-        <div class="match-container">
+        <div class="match-container${modeSelection ? ' selectable' : ''}${selectionne ? ' selected' : ''}" data-match-id="${id}">
+            ${pillSelect}
             ${btnScore}
-            <a href="match_detail.html?match=${id}" class="match-row">
+            <a href="match_detail.html?match=${id}" class="match-row" style="${modeSelection ? 'padding-top:46px' : ''}">
                 <div class="match-content">
                     <div class="team">
                         <img src="chalosse.webp" class="logo" alt="FC Chalosse">

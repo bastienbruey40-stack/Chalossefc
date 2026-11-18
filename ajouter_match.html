@@ -20,11 +20,17 @@
         </header>
 
         <form class="card" id="form-match">
-            <label for="equipe_type" style="margin-top:0">Équipe concernée</label>
-            <select id="equipe_type">
-                <option value="premiere">🔵 Équipe Première</option>
-                <option value="reserve">🟢 Équipe Réserve</option>
-            </select>
+            <label style="margin-top:0">Équipe concernée</label>
+            <div class="choice-grid" id="choix-equipe">
+                <button type="button" class="choice-card premiere active" data-equipe="premiere">
+                    <span class="choice-ic">🔵</span>
+                    <span>Équipe Première</span>
+                </button>
+                <button type="button" class="choice-card reserve" data-equipe="reserve">
+                    <span class="choice-ic">🟢</span>
+                    <span>Équipe Réserve</span>
+                </button>
+            </div>
 
             <label for="adversaire">Nom de l'adversaire</label>
             <input type="text" id="adversaire" placeholder="Ex : FC Doazit" required>
@@ -46,6 +52,15 @@
         import { db, auth, chargerProfil } from "./js/firebase.js";
         import { toast, flash, chargement } from "./js/ui.js";
 
+        let equipeChoisie = 'premiere';
+
+        document.querySelectorAll('#choix-equipe [data-equipe]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b => b.classList.toggle('active', b === btn));
+                equipeChoisie = btn.dataset.equipe;
+            });
+        });
+
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
             const profil = await chargerProfil(user.uid).catch(() => null);
@@ -65,11 +80,11 @@
             chargement(bouton, true);
             try {
                 await addDoc(collection(db, "matchs"), {
-                    equipe_type: document.getElementById('equipe_type').value, // "premiere" ou "reserve"
+                    equipe_type: equipeChoisie,
                     adversaire: adversaire,
                     date: date,
                     logo: document.getElementById('logo').value.trim(),
-                    compo: [] // Liste de joueurs vide pour ce match
+                    compo: []
                 });
                 flash("Match ajouté au calendrier !");
                 window.location.href = "calendrier.html";

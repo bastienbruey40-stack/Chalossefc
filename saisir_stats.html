@@ -20,10 +20,14 @@
         </header>
 
         <div class="card">
-            <label for="select-match" style="margin-top:0">Match</label>
-            <select id="select-match">
-                <option value="">Chargement…</option>
-            </select>
+            <div class="onglets" role="tablist" id="filtre-equipe" style="margin-bottom: 14px;">
+                <button type="button" class="btn-onglet actif" data-eq="toutes">Toutes les équipes</button>
+                <button type="button" class="btn-onglet" data-eq="premiere">🔵 Première</button>
+                <button type="button" class="btn-onglet" data-eq="reserve">🟢 Réserve</button>
+            </div>
+
+            <label style="margin-top:0">Match à renseigner</label>
+            <div id="picker-match"></div>
         </div>
 
         <div class="card stats-saisie hidden" id="carte-effectif">
@@ -39,11 +43,21 @@
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, flash, chargement, echapper, formaterDate } from "./js/ui.js";
-        import { trierParDate } from "./js/matchs.js";
+        import { toast, flash, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { trierParDate, estJoue } from "./js/matchs.js";
 
-        const selectMatch = document.getElementById('select-match');
-        selectMatch.addEventListener('change', chargerJoueursMatch);
+        let tousLesMatchs = [];
+        let filtreEquipe = 'toutes';
+        let matchActifId = '';
+
+        const selectMatch = creerSelectCustom('picker-match', {
+            placeholder: 'Choisir un match…',
+            iconePlaceholder: '📝',
+            onChange: (id) => {
+                matchActifId = id;
+                chargerJoueursMatch(id);
+            }
+        });
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
@@ -57,16 +71,45 @@
 
         async function chargerMatchs() {
             const snap = await getDocs(collection(db, "matchs"));
-            const matchs = [];
-            snap.forEach(d => matchs.push({ id: d.id, data: d.data() }));
-            trierParDate(matchs).reverse(); // plus récents en premier
-            selectMatch.innerHTML = `<option value="">— Choisir un match —</option>` + matchs.map(({ id, data }) =>
-                `<option value="${id}">[${data.equipe_type === "premiere" ? "1ère" : "Rés."}] ${echapper(data.adversaire)} · ${echapper(formaterDate(data.date))}</option>`
-            ).join('');
+            tousLesMatchs = [];
+            snap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+            trierParDate(tousLesMatchs).reverse(); // plus récents en premier
+            majOptionsMatchs();
         }
 
-        async function chargerJoueursMatch() {
-            const matchId = selectMatch.value;
+        function majOptionsMatchs() {
+            const filtres = tousLesMatchs.filter(m =>
+                filtreEquipe === 'toutes' || (m.data.equipe_type === 'premiere' ? 'premiere' : 'reserve') === filtreEquipe
+            );
+            const options = filtres.map(({ id, data }) => {
+                const eq = data.equipe_type === 'premiere' ? 'premiere' : 'reserve';
+                const labelEq = eq === 'premiere' ? 'Première' : 'Réserve';
+                const aDesStats = data.stats_joueurs && Object.keys(data.stats_joueurs).length > 0;
+                const scoreTxt = estJoue(data) ? `${data.score_chalosse} - ${data.score_adversaire}` : (aDesStats ? 'Stats saisies' : 'À saisir');
+                return {
+                    value: id,
+                    dot: eq,
+                    label: `${data.adversaire || 'Adversaire'}`,
+                    sub: `${labelEq} · ${formaterDate(data.date)}`,
+                    badge: scoreTxt,
+                    badgeClass: aDesStats || estJoue(data) ? 'ok' : ''
+                };
+            });
+            selectMatch.setOptions(options, false);
+            matchActifId = '';
+            document.getElementById('carte-effectif').classList.add('hidden');
+            document.getElementById('barre-save').classList.add('hidden');
+        }
+
+        document.querySelectorAll('#filtre-equipe [data-eq]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#filtre-equipe [data-eq]').forEach(b => b.classList.toggle('actif', b === btn));
+                filtreEquipe = btn.dataset.eq;
+                majOptionsMatchs();
+            });
+        });
+
+        async function chargerJoueursMatch(matchId) {
             const conteneur = document.getElementById('liste-effectif');
             const carte = document.getElementById('carte-effectif');
             const barre = document.getElementById('barre-save');
@@ -88,7 +131,7 @@
             const snap = await getDocs(collection(db, "utilisateurs"));
             let html = "";
             snap.forEach(jDoc => {
-                if (!compo.includes(jDoc.id)) return; // uniquement les joueurs de la compo
+                if (!compo.includes(jDoc.id)) return;
                 const s = statsExistantes[jDoc.id] || {};
                 html += `
                     <div class="joueur-ligne" data-id="${jDoc.id}">
@@ -111,7 +154,7 @@
         });
 
         document.getElementById('btn-save').addEventListener('click', async () => {
-            const matchId = selectMatch.value;
+            if (!matchActifId) return;
             const stats_joueurs = {};
             document.querySelectorAll('#liste-effectif .joueur-ligne').forEach(ligne => {
                 stats_joueurs[ligne.dataset.id] = {
@@ -125,7 +168,7 @@
             const bouton = document.getElementById('btn-save');
             chargement(bouton, true);
             try {
-                await updateDoc(doc(db, "matchs", matchId), { stats_joueurs: stats_joueurs });
+                await updateDoc(doc(db, "matchs", matchActifId), { stats_joueurs: stats_joueurs });
                 flash("Stats enregistrées !");
                 window.location.href = "stats.html";
             } catch (e) {
