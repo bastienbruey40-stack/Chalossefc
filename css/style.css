@@ -1007,5 +1007,58 @@ th:first-child { z-index: 2; }
     font-size: .72rem; font-weight: 800; cursor: pointer;
 }
 .bench-chip-btn:hover { background: var(--rouge); color: #fff; }
+.bench-chip[data-joueur-id] { cursor: pointer; transition: border-color .15s, transform .1s; }
+.bench-chip[data-joueur-id]:hover { border-color: var(--jaune); transform: translateY(-1px); }
+
+/* =========================================================
+   FICHE RÉSUMÉ JOUEUR (MODALE)
+   ========================================================= */
+.player-profile-header {
+    display: flex; align-items: center; gap: 14px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.player-profile-jersey {
+    width: 56px; height: 54px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.player-profile-meta { min-width: 0; flex: 1; text-align: left; }
+
+.player-stats-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    margin-top: 14px;
+}
+.player-stat-box {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 8px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.player-stat-box strong {
+    font-size: 1.25rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.player-stat-box span {
+    font-size: .72rem; font-weight: 600; color: var(--texte-2);
+}
+.player-stat-box small {
+    font-size: .64rem; color: var(--texte-3); line-height: 1.1;
+}
+
+.player-history-list {
+    max-height: 200px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.player-history-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 11px; border-radius: 11px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    text-decoration: none; color: inherit; transition: border-color .15s;
+}
+a.player-history-item:hover { border-color: var(--jaune); }
+.player-history-main { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.player-history-main strong {
+    font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.player-history-main small { font-size: .74rem; }
+.player-history-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
 
 

@@ -61,8 +61,9 @@
     <script type="module">
         import { collection, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
         import { toast, confirmer, ouvrirModal, chargement, echapper } from "./js/ui.js";
+        import { ouvrirFicheJoueur } from "./js/tactique.js";
 
         let estAdmin = false;
         let liste = [];
@@ -86,10 +87,10 @@
                 const statsGlobales = {};
                 joueursRef.forEach(d => {
                     const data = d.data();
-                    if (data.role === "joueur") {
+                    if (estProfilJoueur(data)) {
                         statsGlobales[d.id] = {
                             id: d.id,
-                            nom: `${data.prenom} ${data.nom}`,
+                            nom: `${data.prenom} ${data.nom || ''}`.trim(),
                             mj: 0, buts: 0, passes: 0, jaunes: 0, rouges: 0,
                             totalNotes: 0, nbVotes: 0
                         };
@@ -161,7 +162,7 @@
                     : '';
                 return `
                     <tr>
-                        <td class="nom-joueur">${echapper(s.nom)}</td>
+                        <td class="nom-joueur" data-joueur-id="${s.id}" style="cursor:pointer" title="Voir la fiche de ${echapper(s.nom)}">${echapper(s.nom)}</td>
                         <td>${s.mj}</td>
                         ${cellule(s.buts, 'c-buts')}
                         ${cellule(s.passes, 'c-passes')}
@@ -260,8 +261,14 @@
 
         document.getElementById('corps-table').addEventListener('click', (e) => {
             const btn = e.target.closest('.btn-reset-joueur');
-            if (!btn) return;
-            supprimerStatsJoueur(btn.dataset.id, btn.dataset.nom);
+            if (btn) {
+                supprimerStatsJoueur(btn.dataset.id, btn.dataset.nom);
+                return;
+            }
+            const cellNom = e.target.closest('.nom-joueur[data-joueur-id]');
+            if (cellNom) {
+                ouvrirFicheJoueur(cellNom.dataset.joueurId);
+            }
         });
 
         // Réinitialiser toutes les statistiques de la saison

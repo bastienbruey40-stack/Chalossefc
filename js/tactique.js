@@ -1,5 +1,7 @@
-// Dispositifs tactiques, coordonnées sur le terrain et rendu visuel du terrain de football.
-import { echapper } from "./ui.js";
+// Dispositifs tactiques, coordonnées sur le terrain, rendu visuel et fiche résumé joueur.
+import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { db } from "./firebase.js";
+import { echapper, ouvrirModal, formaterDate, versDate } from "./ui.js";
 
 // Coordonnées (x, y) en pourcentage sur un terrain vertical :
 // y = 89% -> Gardien (en bas) | y = 16% -> Attaquants (en haut)
@@ -274,9 +276,11 @@ export function rendreTerrainHTML({
 
         return `
             <button type="button" class="pitch-node filled${estGB ? ' gk' : ''}${estActif ? ' active' : ''}"
-                    style="left:${poste.x}%; top:${poste.y}%"
+                    style="left:${poste.x}%; top:${poste.y}%; cursor:pointer"
                     data-slot="${index}" data-joueur-id="${echapper(joueurId)}"
-                    ${interactif ? 'draggable="true"' : ''}>
+                    data-num="${numero}" data-poste="${echapper(poste.code)}"
+                    ${interactif ? 'draggable="true"' : ''}
+                    title="Voir la fiche de ${echapper(nomAffiche)}">
                 <span class="pitch-pos-tag">${echapper(poste.code)}</span>
                 ${badgeNote}
                 <span class="pitch-jersey-wrap">
@@ -301,4 +305,222 @@ export function rendreTerrainHTML({
                 ${pions}
             </div>
         </div>`;
+}
+
+// Ouvre une modale avec la fiche complète et les statistiques du joueur
+export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaillot = null, codePosteMatch = null } = {}) {
+    if (!joueurId) return;
+    ouvrirModal(async (boite, fermer) => {
+        boite.innerHTML = `
+            <div style="text-align:center; padding: 28px 10px;">
+                <span class="spinner" style="width:28px; height:28px; color:var(--jaune);"></span>
+                <p class="muted" style="margin:12px 0 0;">Chargement de la fiche joueur…</p>
+            </div>`;
+
+        try {
+            const [joueurSnap, matchsSnap, notesSnap] = await Promise.all([
+                getDoc(doc(db, "utilisateurs", joueurId)),
+                getDocs(collection(db, "matchs")),
+                getDocs(collection(db, "notes"))
+            ]);
+
+            if (!boite.isConnected) return;
+            if (!joueurSnap.exists()) {
+                boite.innerHTML = `
+                    <h3 class="modal-title">Joueur introuvable</h3>
+                    <p class="modal-text">Ce joueur n'existe plus dans la base de données.</p>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-ok" id="btn-fermer-fiche">Fermer</button>
+                    </div>`;
+                boite.querySelector('#btn-fermer-fiche').onclick = () => fermer();
+                return;
+            }
+
+            const j = joueurSnap.data();
+            const nomComplet = `${j.prenom || ''} ${(j.nom || '').toUpperCase()}`.trim() || 'Joueur';
+            const poste = j.poste || 'Poste non renseigné';
+
+            // Notes reçues sur la saison et par match
+            const notesParMatch = new Map();
+            let totalNotes = 0;
+            let nbVotes = 0;
+            notesSnap.forEach(nDoc => {
+                const n = nDoc.data();
+                const parts = nDoc.id.split('_');
+                const jId = n.joueurId || n.joueur_id || parts[1];
+                if (jId !== joueurId) return;
+                const val = parseFloat(n.note);
+                if (isNaN(val)) return;
+                totalNotes += val;
+                nbVotes++;
+                const mId = n.matchId || n.match_id || parts[0];
+                if (mId) {
+                    const prev = notesParMatch.get(mId) || { total: 0, nb: 0 };
+                    prev.total += val;
+                    prev.nb++;
+                    notesParMatch.set(mId, prev);
+                }
+            });
+
+            // Parcours et stats sur les matchs
+            let mjTotal = 0, mjPremiere = 0, mjReserve = 0;
+            let nbTitulaire = 0, nbRemplacant = 0;
+            let buts = 0, passes = 0, jaunes = 0, rouges = 0;
+            const historiqueMatchs = [];
+
+            matchsSnap.forEach(mDoc => {
+                const m = mDoc.data();
+                const tactique = extraireCompoTactique(m);
+                const compo = Array.isArray(m.compo) ? m.compo : [];
+
+                let titulaireSlot = -1;
+                for (let s = 0; s < 11; s++) {
+                    if (tactique.titulaires[s] === joueurId) { titulaireSlot = s; break; }
+                }
+                const estSurBanc = tactique.remplacants.includes(joueurId);
+                const dansCompo = compo.includes(joueurId);
+                const sMatch = m.stats_joueurs?.[joueurId];
+
+                if (titulaireSlot !== -1 || estSurBanc || dansCompo || sMatch) {
+                    mjTotal++;
+                    if (m.equipe_type === 'reserve') mjReserve++;
+                    else mjPremiere++;
+
+                    if (titulaireSlot !== -1) nbTitulaire++;
+                    else if (estSurBanc || dansCompo) nbRemplacant++;
+
+                    if (sMatch) {
+                        buts += parseInt(sMatch.buts) || 0;
+                        passes += parseInt(sMatch.passes) || 0;
+                        jaunes += parseInt(sMatch.jaunes) || 0;
+                        rouges += parseInt(sMatch.rouges) || 0;
+                    }
+
+                    const noteM = notesParMatch.get(mDoc.id);
+                    const moyM = noteM ? (noteM.total / noteM.nb).toFixed(1) : null;
+                    const codeP = titulaireSlot !== -1
+                        ? (DISPOSITIFS[tactique.dispositif]?.postes[titulaireSlot]?.code || 'Tit.')
+                        : 'Banc';
+
+                    historiqueMatchs.push({
+                        id: mDoc.id,
+                        date: m.date,
+                        ts: versDate(m.date)?.getTime() || 0,
+                        adversaire: m.adversaire || 'Adversaire',
+                        equipe: m.equipe_type === 'reserve' ? 'Réserve' : 'Première',
+                        scoreC: m.score_chalosse,
+                        scoreA: m.score_adversaire,
+                        titulaire: titulaireSlot !== -1,
+                        codePoste: codeP,
+                        stats: sMatch || {},
+                        moyM
+                    });
+                }
+            });
+
+            historiqueMatchs.sort((a, b) => b.ts - a.ts);
+            const moyenneSaison = nbVotes > 0 ? (totalNotes / nbVotes).toFixed(1) : '–';
+            const estGB = poste.toLowerCase() === 'gardien' || numeroMaillot === 1;
+
+            let badgeMatchCourant = '';
+            if (matchCourantId && numeroMaillot) {
+                const txtRole = codePosteMatch === 'Remp.'
+                    ? `Remplaçant n°${numeroMaillot}`
+                    : `Titulaire n°${numeroMaillot}${codePosteMatch ? ` · ${codePosteMatch}` : ''}`;
+                badgeMatchCourant = `<span class="tag" style="background:var(--jaune-doux); color:var(--texte); border-color:var(--jaune);">${echapper(txtRole)}</span>`;
+            }
+
+            const htmlHistorique = historiqueMatchs.length === 0
+                ? `<p class="muted" style="font-size:.85rem; margin:6px 0 0;">Aucun match joué enregistré pour le moment.</p>`
+                : historiqueMatchs.map(h => {
+                    const scoreStr = (h.scoreC !== undefined && h.scoreC !== null) ? `${h.scoreC} - ${h.scoreA}` : 'VS';
+                    let ev = '';
+                    if (h.stats.buts > 0) ev += ` ⚽${h.stats.buts > 1 ? h.stats.buts : ''}`;
+                    if (h.stats.passes > 0) ev += ` 🎯${h.stats.passes > 1 ? h.stats.passes : ''}`;
+                    if (h.stats.jaunes > 0) ev += ` 🟨`;
+                    if (h.stats.rouges > 0) ev += ` 🟥`;
+                    const noteBadge = h.moyM ? `<span class="note-badge" style="font-size:.74rem; padding:2px 8px;">⭐ ${h.moyM}</span>` : '';
+                    const hrefAttr = h.id !== matchCourantId ? `href="match_detail.html?match=${encodeURIComponent(h.id)}"` : '';
+                    const tag = hrefAttr ? 'a' : 'div';
+                    return `
+                        <${tag} ${hrefAttr} class="player-history-item">
+                            <div class="player-history-main">
+                                <strong>${echapper(h.adversaire)}</strong>
+                                <small class="muted">${echapper(formaterDate(h.date))} · ${echapper(h.equipe)} · ${echapper(h.codePoste)}${ev}</small>
+                            </div>
+                            <div class="player-history-right">
+                                <span class="tag" style="margin:0;">${echapper(scoreStr)}</span>
+                                ${noteBadge}
+                            </div>
+                        </${tag}>`;
+                }).join('');
+
+            boite.innerHTML = `
+                <div class="player-profile-header">
+                    <div class="player-profile-jersey">
+                        ${svgMaillotTerrain({ numero: numeroMaillot || 'FC', estGB })}
+                    </div>
+                    <div class="player-profile-meta">
+                        <h3 class="modal-title" style="margin-bottom:4px;">${echapper(nomComplet)}</h3>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                            <span class="tag" style="margin:0;">${echapper(poste)}</span>
+                            ${badgeMatchCourant}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="player-stats-grid">
+                    <div class="player-stat-box">
+                        <strong>${mjTotal}</strong>
+                        <span>Matchs joués</span>
+                        <small>${mjPremiere} 1ère · ${mjReserve} Rés.</small>
+                    </div>
+                    <div class="player-stat-box">
+                        <strong style="color:var(--vert);">${buts}</strong>
+                        <span>Buts ⚽</span>
+                        <small>${nbTitulaire} tit. · ${nbRemplacant} banc</small>
+                    </div>
+                    <div class="player-stat-box">
+                        <strong style="color:var(--bleu);">${passes}</strong>
+                        <span>Passes 🎯</span>
+                    </div>
+                    <div class="player-stat-box">
+                        <strong>${moyenneSaison}</strong>
+                        <span>Note moy. ⭐</span>
+                        <small>${nbVotes} vote${nbVotes > 1 ? 's' : ''}</small>
+                    </div>
+                    <div class="player-stat-box">
+                        <strong style="color:var(--orange);">${jaunes}</strong>
+                        <span>Jaunes 🟨</span>
+                    </div>
+                    <div class="player-stat-box">
+                        <strong style="color:var(--rouge);">${rouges}</strong>
+                        <span>Rouges 🟥</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 14px;">
+                    <div class="muted" style="font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">
+                        📅 Matchs disputés (${historiqueMatchs.length})
+                    </div>
+                    <div class="player-history-list">${htmlHistorique}</div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-modal btn-modal-ok" id="btn-fermer-fiche">Fermer</button>
+                </div>
+            `;
+            boite.querySelector('#btn-fermer-fiche').onclick = () => fermer();
+        } catch (err) {
+            console.error(err);
+            if (!boite.isConnected) return;
+            boite.innerHTML = `
+                <h3 class="modal-title">Erreur</h3>
+                <p class="modal-text">Impossible de charger la fiche du joueur.</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-modal btn-modal-ok" id="btn-fermer-fiche">Fermer</button>
+                </div>`;
+            boite.querySelector('#btn-fermer-fiche').onclick = () => fermer();
+        }
+    });
 }

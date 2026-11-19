@@ -32,8 +32,9 @@
     <script type="module">
         import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
         import { toast, confirmer, echapper } from "./js/ui.js";
+        import { ouvrirFicheJoueur } from "./js/tactique.js";
 
         let estAdmin = false;
 
@@ -50,8 +51,9 @@
                 const joueursSnap = await getDocs(collection(db, "utilisateurs"));
                 const joueurs = {};
                 joueursSnap.forEach(d => {
-                    if (d.data().role === "joueur") {
-                        joueurs[d.id] = { id: d.id, nom: d.data().prenom + " " + d.data().nom, totalNotes: 0, nbNotes: 0, noteDocIds: [] };
+                    const data = d.data();
+                    if (estProfilJoueur(data)) {
+                        joueurs[d.id] = { id: d.id, nom: `${data.prenom} ${data.nom || ''}`.trim(), totalNotes: 0, nbNotes: 0, noteDocIds: [] };
                     }
                 });
 
@@ -88,7 +90,7 @@
                         : '';
                     return `
                         <div class="classement-ligne ${i === 0 ? 'podium-1' : ''}">
-                            <span><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
+                            <span data-joueur-id="${j.id}" style="cursor:pointer" title="Voir la fiche de ${echapper(j.nom)}"><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
                             <div style="display:flex; align-items:center;">
                                 <span class="note-badge">${j.moyenne} / 10</span>
                                 ${btnAdmin}
@@ -103,7 +105,11 @@
 
         document.getElementById('liste-classement').addEventListener('click', async (e) => {
             const btn = e.target.closest('.btn-suppr-notes');
-            if (!btn) return;
+            if (!btn) {
+                const spanJoueur = e.target.closest('[data-joueur-id]');
+                if (spanJoueur) ouvrirFicheJoueur(spanJoueur.dataset.joueurId);
+                return;
+            }
             const joueurId = btn.dataset.id;
             const nom = btn.dataset.nom;
             const ok = await confirmer(`Supprimer toutes les notes reçues par ${nom} ?`, {

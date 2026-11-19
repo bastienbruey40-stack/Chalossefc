@@ -73,7 +73,7 @@
         import { db, auth, chargerProfil } from "./js/firebase.js";
         import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
         import { editerMatchComplet } from "./js/matchs.js";
-        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
+        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, ouvrirFicheJoueur } from "./js/tactique.js";
 
         const matchId = new URLSearchParams(window.location.search).get('match');
 
@@ -206,7 +206,7 @@
                         if (st.jaunes > 0) ev += ` 🟨`;
                         if (st.rouges > 0) ev += ` 🟥`;
                         return `
-                            <div class="bench-chip">
+                            <div class="bench-chip" data-joueur-id="${echapper(id)}" data-num="${numRemp}" style="cursor:pointer" title="Voir la fiche de ${echapper(j.nomComplet)}">
                                 <span class="bench-num">${numRemp}</span>
                                 <span>${echapper(j.nomComplet)}${ev}<small class="muted">${moy}</small></span>
                             </div>`;
@@ -302,6 +302,27 @@
                     </div>`;
             }).join('');
         }
+
+        // Clic sur un joueur du terrain ou du banc -> ouvre la fiche résumé joueur
+        document.getElementById('vue-terrain-match').addEventListener('click', (e) => {
+            const node = e.target.closest('.pitch-node.filled[data-joueur-id]');
+            if (!node) return;
+            ouvrirFicheJoueur(node.dataset.joueurId, {
+                matchCourantId: matchId,
+                numeroMaillot: node.dataset.num ? Number(node.dataset.num) : null,
+                codePosteMatch: node.dataset.poste || null
+            });
+        });
+
+        document.getElementById('liste-banc-match').addEventListener('click', (e) => {
+            const chip = e.target.closest('.bench-chip[data-joueur-id]');
+            if (!chip) return;
+            ouvrirFicheJoueur(chip.dataset.joueurId, {
+                matchCourantId: matchId,
+                numeroMaillot: chip.dataset.num ? Number(chip.dataset.num) : null,
+                codePosteMatch: 'Remp.'
+            });
+        });
 
         // Bouton admin : modifier toutes les informations du match
         document.getElementById('btn-editer-match').addEventListener('click', async () => {

@@ -52,8 +52,9 @@
     <script type="module">
         import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
         import { toast, confirmer, formulaire, chargement, echapper, initiales } from "./js/ui.js";
+        import { ouvrirFicheJoueur } from "./js/tactique.js";
 
         let estAdmin = false;
         let listeJoueurs = [];
@@ -79,7 +80,7 @@
                 listeJoueurs = [];
                 snap.forEach(d => {
                     const data = d.data();
-                    if (data.role === "joueur") listeJoueurs.push({ id: d.id, ...data });
+                    if (estProfilJoueur(data)) listeJoueurs.push({ id: d.id, ...data });
                 });
                 trierJoueurs();
                 majResume();
@@ -127,7 +128,7 @@
                        </div>`;
 
                 return `
-                    <div class="player-card${modeSelection ? ' selectable' : ''}${coche ? ' selected' : ''}" data-card-id="${j.id}">
+                    <div class="player-card${modeSelection ? ' selectable' : ''}${coche ? ' selected' : ''}" data-card-id="${j.id}" style="cursor:pointer">
                         <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
                         <div class="info">
                             <strong>${echapper(j.prenom)} ${echapper((j.nom || '').toUpperCase())}</strong>
@@ -180,7 +181,13 @@
             const btn = document.getElementById('btn-suppr-lot');
             chargement(btn, true, 'Suppression…');
             try {
-                await Promise.all(ids.map(id => deleteDoc(doc(db, "utilisateurs", id))));
+                await Promise.all(ids.map(id => {
+                    const j = listeJoueurs.find(x => x.id === id);
+                    if (j && j.role !== "joueur") {
+                        return updateDoc(doc(db, "utilisateurs", id), { est_joueur: false });
+                    }
+                    return deleteDoc(doc(db, "utilisateurs", id));
+                }));
                 listeJoueurs = listeJoueurs.filter(j => !selection.has(j.id));
                 selection.clear();
                 modeSelection = false;
@@ -252,21 +259,41 @@
 
             // Suppression unitaire immédiate
             const btnSuppr = e.target.closest('.btn-supprimer');
-            if (!btnSuppr) return;
-            const joueur = listeJoueurs.find(j => j.id === btnSuppr.dataset.id);
-            const nomJoueur = `${joueur?.prenom || ''} ${joueur?.nom || ''}`.trim();
-            const ok = await confirmer(`${nomJoueur} sera supprimé définitivement du club.`, {
-                titre: 'Supprimer ce joueur ?', ok: 'Supprimer', danger: true
-            });
-            if (!ok) return;
-            try {
-                await deleteDoc(doc(db, "utilisateurs", btnSuppr.dataset.id));
-                listeJoueurs = listeJoueurs.filter(j => j.id !== btnSuppr.dataset.id);
-                majResume();
-                afficher();
-                toast(`${nomJoueur} a été supprimé.`);
-            } catch (error) {
-                toast("Erreur lors de la suppression : " + error.message, 'error');
+            if (btnSuppr) {
+                const joueur = listeJoueurs.find(j => j.id === btnSuppr.dataset.id);
+                const nomJoueur = `${joueur?.prenom || ''} ${joueur?.nom || ''}`.trim();
+                const estCompteApp = joueur && joueur.role !== "joueur";
+                const ok = await confirmer(
+                    estCompteApp
+                        ? `${nomJoueur} sera retiré de l'effectif sportif (son compte d'accès à l'application sera conservé).`
+                        : `${nomJoueur} sera supprimé définitivement du club.`,
+                    {
+                        titre: estCompteApp ? 'Retirer de l\'effectif ?' : 'Supprimer ce joueur ?',
+                        ok: estCompteApp ? 'Retirer' : 'Supprimer',
+                        danger: true
+                    }
+                );
+                if (!ok) return;
+                try {
+                    if (estCompteApp) {
+                        await updateDoc(doc(db, "utilisateurs", btnSuppr.dataset.id), { est_joueur: false });
+                    } else {
+                        await deleteDoc(doc(db, "utilisateurs", btnSuppr.dataset.id));
+                    }
+                    listeJoueurs = listeJoueurs.filter(j => j.id !== btnSuppr.dataset.id);
+                    majResume();
+                    afficher();
+                    toast(estCompteApp ? `${nomJoueur} a été retiré de l'effectif.` : `${nomJoueur} a été supprimé.`);
+                } catch (error) {
+                    toast("Erreur lors de la suppression : " + error.message, 'error');
+                }
+                return;
+            }
+
+            // Clic sur la carte joueur -> ouvre la fiche résumé
+            const carte = e.target.closest('.player-card[data-card-id]');
+            if (carte) {
+                ouvrirFicheJoueur(carte.dataset.cardId);
             }
         });
     </script>

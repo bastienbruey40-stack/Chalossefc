@@ -91,7 +91,7 @@
     <script type="module">
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
         import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
@@ -150,7 +150,7 @@
                 const usersSnap = await getDocs(collection(db, "utilisateurs"));
                 usersSnap.forEach(u => {
                     const data = u.data();
-                    if (data.prenom && (data.role === "joueur" || data.role === "admin")) {
+                    if (estProfilJoueur(data)) {
                         const j = {
                             id: u.id,
                             prenom: data.prenom,

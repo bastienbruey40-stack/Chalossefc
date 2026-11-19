@@ -22,6 +22,12 @@ export const app = _0x4f2a;
 export const db = getFirestore(_0x4f2a);
 export const auth = getAuth(_0x4f2a);
 
+export function estProfilJoueur(data) {
+    if (!data || !data.prenom) return false;
+    if (data.est_joueur === false) return false;
+    return data.role === "joueur" || data.role === "admin" || Boolean(data.poste);
+}
+
 const _c = new Map();
 export function chargerProfil(uid) {
     if (!_c.has(uid)) {
