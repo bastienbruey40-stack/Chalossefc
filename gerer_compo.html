@@ -92,12 +92,10 @@
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, flash, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
         import { resoudreOuCreerJoueursParNom } from "./js/fff_import.js";
-
-        const matchUrlParam = new URLSearchParams(window.location.search).get('match');
 
         let equipeActive = 'premiere';
         let matchActifId = null;
@@ -128,6 +126,7 @@
             if (!btn) return;
             dispositifActif = btn.dataset.disp;
             rafraichirVueTactique();
+            sauvegarderCompoAuto();
         });
 
         onAuthStateChanged(auth, async (user) => {
@@ -186,18 +185,21 @@
                 document.getElementById('sub-nb-premiere').textContent = `${nbP} match${nbP > 1 ? 's' : ''}`;
                 document.getElementById('sub-nb-reserve').textContent = `${nbR} match${nbR > 1 ? 's' : ''}`;
 
-                // Si un match est passé dans l'URL (?match=...), basculer sur son équipe et le sélectionner
-                if (matchUrlParam && !matchActifId) {
-                    const mCible = tousLesMatchs.find(m => m.id === matchUrlParam);
-                    if (mCible) {
-                        equipeActive = mCible.data.equipe_type === 'reserve' ? 'reserve' : 'premiere';
-                        document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b =>
-                            b.classList.toggle('active', b.dataset.equipe === equipeActive)
-                        );
-                        rafraichirMenuMatchs(false);
-                        selectMatch.setValue(matchUrlParam, true);
-                        return;
+                // Si un match est actif, passé dans l'URL (?match=...) ou mémorisé en session, on le restaure
+                const cibleId = matchActifId || new URLSearchParams(window.location.search).get('match') || sessionStorage.getItem('chalosse_compo_match_id');
+                const mCible = cibleId ? tousLesMatchs.find(m => m.id === cibleId) : null;
+                if (mCible) {
+                    const dejaCharge = matchActifId === cibleId;
+                    equipeActive = mCible.data.equipe_type === 'reserve' ? 'reserve' : 'premiere';
+                    document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b =>
+                        b.classList.toggle('active', b.dataset.equipe === equipeActive)
+                    );
+                    rafraichirMenuMatchs(dejaCharge);
+                    selectMatch.setValue(cibleId, false);
+                    if (!dejaCharge) {
+                        await chargerCompoDuMatch(cibleId);
                     }
+                    return;
                 }
 
                 rafraichirMenuMatchs(true);
@@ -234,6 +236,8 @@
             btn.addEventListener('click', () => {
                 document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b => b.classList.toggle('active', b === btn));
                 equipeActive = btn.dataset.equipe;
+                sessionStorage.removeItem('chalosse_compo_match_id');
+                window.history.replaceState(null, '', window.location.pathname);
                 rafraichirMenuMatchs(false);
             });
         });
@@ -241,7 +245,15 @@
         async function chargerCompoDuMatch(idMatch) {
             matchActifId = idMatch;
             const zone = document.getElementById('zone-tactique');
-            if (!matchActifId) { zone.classList.add('hidden'); return; }
+            if (!matchActifId) {
+                sessionStorage.removeItem('chalosse_compo_match_id');
+                window.history.replaceState(null, '', window.location.pathname);
+                zone.classList.add('hidden');
+                return;
+            }
+
+            sessionStorage.setItem('chalosse_compo_match_id', matchActifId);
+            window.history.replaceState(null, '', '?match=' + encodeURIComponent(matchActifId));
 
             const matchDoc = await getDoc(doc(db, "matchs", matchActifId));
             const matchData = matchDoc.exists() ? matchDoc.data() : {};
@@ -254,6 +266,39 @@
             document.getElementById('recherche').value = '';
             rafraichirVueTactique();
             zone.classList.remove('hidden');
+        }
+
+        let sauvegardeEnCours = Promise.resolve();
+
+        function sauvegarderCompoAuto() {
+            if (!matchActifId) return;
+            const matchCibleId = matchActifId;
+            const listeCompoPlate = compilerListeCompo(titulaires, remplacants);
+            const compoTactique = {
+                dispositif: dispositifActif,
+                titulaires: { ...titulaires },
+                remplacants: [...remplacants]
+            };
+
+            const entree = tousLesMatchs.find(m => m.id === matchCibleId);
+            if (entree) {
+                entree.data.compo = listeCompoPlate;
+                entree.data.compo_tactique = compoTactique;
+                rafraichirMenuMatchs(true);
+            }
+
+            sauvegardeEnCours = sauvegardeEnCours.then(async () => {
+                try {
+                    await updateDoc(doc(db, "matchs", matchCibleId), {
+                        compo: listeCompoPlate,
+                        compo_tactique: compoTactique
+                    });
+                } catch (error) {
+                    console.error("Erreur de sauvegarde automatique :", error);
+                    toast("Erreur lors de la sauvegarde automatique.", 'error');
+                }
+            });
+            return sauvegardeEnCours;
         }
 
         function trouverSlotDuJoueur(joueurId) {
@@ -276,6 +321,7 @@
             remplacants = remplacants.filter(id => id !== joueurId);
             titulaires[slotIndex] = joueurId;
             rafraichirVueTactique();
+            sauvegarderCompoAuto();
         }
 
         function ajouterAuBanc(joueurId) {
@@ -283,6 +329,7 @@
             if (slot !== -1) delete titulaires[slot];
             if (!remplacants.includes(joueurId)) remplacants.push(joueurId);
             rafraichirVueTactique();
+            sauvegarderCompoAuto();
         }
 
         function retirerJoueur(joueurId) {
@@ -290,6 +337,7 @@
             if (slot !== -1) delete titulaires[slot];
             remplacants = remplacants.filter(id => id !== joueurId);
             rafraichirVueTactique();
+            sauvegarderCompoAuto();
         }
 
         function rafraichirVueTactique() {
@@ -479,6 +527,7 @@
                     boite.querySelector('#btn-vider-poste').onclick = () => {
                         delete titulaires[slotIndex];
                         rafraichirVueTactique();
+                        sauvegarderCompoAuto();
                         fermer(true);
                     };
                     boite.querySelector('#btn-vers-banc').onclick = () => {
@@ -545,6 +594,7 @@
                     }
                     afficherCandidats(inputSearch.value);
                     rafraichirVueTactique();
+                    sauvegarderCompoAuto();
                 });
 
                 boite.querySelector('#btn-fermer-banc').onclick = () => fermer(true);
@@ -616,10 +666,16 @@
 
         document.getElementById('recherche').addEventListener('input', rendreListeEffectif);
 
-        document.getElementById('btn-vider-compo').addEventListener('click', () => {
+        document.getElementById('btn-vider-compo').addEventListener('click', async () => {
+            const ok = await confirmer("Voulez-vous vraiment vider tous les titulaires et remplaçants de ce match ?", {
+                titre: 'Vider le terrain ?', ok: 'Vider la compo', danger: true
+            });
+            if (!ok) return;
             titulaires = {};
             remplacants = [];
             rafraichirVueTactique();
+            await sauvegarderCompoAuto();
+            toast("Composition vidée.");
         });
 
         // Importer une composition à partir d'une liste de noms (utilise le joueur s'il existe déjà, sinon le crée automatiquement)
@@ -668,7 +724,8 @@
                         remplacants = ids.slice(11);
 
                         rafraichirVueTactique();
-                        toast(`${ids.length} joueur(s) placés sur la feuille de match !`);
+                        await sauvegarderCompoAuto();
+                        toast(`${ids.length} joueur(s) placés et enregistrés sur la feuille de match !`);
                         fermer(true);
                     } catch (err) {
                         console.error(err);
@@ -693,6 +750,7 @@
             };
 
             try {
+                await sauvegardeEnCours;
                 await updateDoc(doc(db, "matchs", matchActifId), {
                     compo: listeCompoPlate,
                     compo_tactique: compoTactique

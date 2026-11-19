@@ -1,5 +1,5 @@
 // Service Worker PWA - FC Chalosse (Network-First avec repli sur le cache hors-ligne)
-const CACHE_NAME = 'chalosse-v6';
+const CACHE_NAME = 'chalosse-v7';
 const ASSETS = [
     './',
     './index.html',
@@ -43,7 +43,7 @@ self.addEventListener('fetch', (e) => {
     if (url.origin !== self.location.origin) return;
 
     e.respondWith(
-        fetch(e.request)
+        fetch(e.request, { cache: 'no-cache' })
             .then((response) => {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
