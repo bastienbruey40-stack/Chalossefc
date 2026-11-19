@@ -1,0 +1,6 @@
+# Fichiers de configuration locale et secrets
+.env
+.env.*
+js/firebase-config.local.js
+.firebase/
+node_modules/

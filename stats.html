@@ -69,13 +69,12 @@
         let cleTri = 'buts';
 
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const profil = await chargerProfil(user.uid).catch(() => null);
-                estAdmin = profil?.role === "admin";
-                if (estAdmin) {
-                    document.getElementById('outils-admin-stats').classList.remove('hidden');
-                    document.getElementById('th-admin').classList.remove('hidden');
-                }
+            if (!user) { window.location.href = "connexion.html"; return; }
+            const profil = await chargerProfil(user.uid).catch(() => null);
+            estAdmin = profil?.role === "admin";
+            if (estAdmin) {
+                document.getElementById('outils-admin-stats').classList.remove('hidden');
+                document.getElementById('th-admin').classList.remove('hidden');
             }
             calculerStats();
         });

@@ -13,11 +13,18 @@ export function trierParDate(liste) {
     return liste.sort((a, b) => (versDate(a.data.date)?.getTime() ?? Infinity) - (versDate(b.data.date)?.getTime() ?? Infinity));
 }
 
+function urlLogoSaine(url) {
+    if (!url || typeof url !== 'string') return '';
+    const u = url.trim();
+    return /^https?:\/\//i.test(u) ? u : '';
+}
+
 export function carteMatch(id, d, { admin = false, gestion = false, modeSelection = false, selectionne = false } = {}) {
     cache.set(id, d);
     const adv = echapper(d.adversaire || 'Adversaire');
-    const logoAdv = d.logo
-        ? `<img src="${echapper(d.logo)}" class="logo" alt="" loading="lazy">`
+    const urlLogo = urlLogoSaine(d.logo);
+    const logoAdv = urlLogo
+        ? `<img src="${echapper(urlLogo)}" class="logo" alt="" loading="lazy" referrerpolicy="no-referrer">`
         : `<div class="logo">🛡️</div>`;
 
     let centre = `<div class="vs-box">VS</div>`;

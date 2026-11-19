@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Vérifie que l'utilisateur est connecté
+    function estConnecte() {
+      return request.auth != null;
+    }
+
+    // Vérifie que l'utilisateur connecté possède le rôle "admin" dans Firestore
+    function estAdmin() {
+      return estConnecte() &&
+        exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // 1. COLLECTION "utilisateurs" (Comptes & Joueurs de l'effectif)
+    match /utilisateurs/{userId} {
+      // Lecture réservée aux membres connectés du club
+      allow read: if estConnecte();
+
+      // Inscription : un utilisateur ne peut créer QUE sa propre fiche et UNIQUEMENT avec le rôle "utilisateur"
+      // (Impossible de s'auto-attribuer le rôle "admin" !)
+      // L'admin peut quant à lui ajouter des fiches "joueur".
+      allow create: if estAdmin() || (
+        estConnecte() &&
+        request.auth.uid == userId &&
+        request.resource.data.role == "utilisateur"
+      );
+
+      // Mise à jour : un utilisateur ne peut modifier que sa propre fiche SANS jamais pouvoir changer son champ "role"
+      allow update: if estAdmin() || (
+        estConnecte() &&
+        request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role
+      );
+
+      // Suppression : réservée à l'admin (ou à l'utilisateur qui purge son propre compte)
+      allow delete: if estAdmin() || (estConnecte() && request.auth.uid == userId);
+    }
+
+    // 2. COLLECTION "matchs" (Calendrier, scores, compositions, statistiques)
+    match /matchs/{matchId} {
+      allow read: if estConnecte();
+      allow create, update, delete: if estAdmin();
+    }
+
+    // 3. COLLECTION "notes" (Votes Homme du match)
+    match /notes/{noteId} {
+      allow read: if estConnecte();
+
+      // Un utilisateur connecté ne peut enregistrer que SA propre note (entre 0 et 10)
+      allow create, update: if estConnecte() &&
+        (request.resource.data.voterId == request.auth.uid || request.resource.data.votant_id == request.auth.uid) &&
+        request.resource.data.note is number &&
+        request.resource.data.note >= 0 &&
+        request.resource.data.note <= 10 &&
+        noteId.matches('.*_' + request.auth.uid + '$');
+
+      // Seul un administrateur peut supprimer des notes
+      allow delete: if estAdmin();
+    }
+
+    // 4. COLLECTION "saisons"
+    match /saisons/{saisonId} {
+      allow read: if estConnecte();
+      allow write: if estAdmin();
+    }
+  }
+}

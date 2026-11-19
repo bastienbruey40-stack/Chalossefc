@@ -84,9 +84,9 @@
             }
             try {
                 await setDoc(doc(db, "notes", `${matchId}_${joueurId}_${utilisateurConnecte.uid}`), {
-                    joueur_id: joueurId,
-                    match_id: matchId,
-                    votant_id: utilisateurConnecte.uid,
+                    joueurId: joueurId,
+                    matchId: matchId,
+                    voterId: utilisateurConnecte.uid,
                     note: valeurNote,
                     date: new Date().toISOString()
                 });

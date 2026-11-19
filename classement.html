@@ -38,10 +38,9 @@
         let estAdmin = false;
 
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                const profil = await chargerProfil(user.uid).catch(() => null);
-                estAdmin = profil?.role === "admin";
-            }
+            if (!user) { window.location.href = "connexion.html"; return; }
+            const profil = await chargerProfil(user.uid).catch(() => null);
+            estAdmin = profil?.role === "admin";
             genererClassement();
         });
 
