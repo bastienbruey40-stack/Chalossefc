@@ -73,7 +73,7 @@
         import { db, auth, chargerProfil } from "./js/firebase.js";
         import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
         import { editerMatchComplet } from "./js/matchs.js";
-        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, ouvrirFicheJoueur } from "./js/tactique.js";
+        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, obtenirNumeroJoueur, ouvrirFicheJoueur } from "./js/tactique.js";
 
         const matchId = new URLSearchParams(window.location.search).get('match');
 
@@ -142,7 +142,8 @@
                         prenom: d.prenom || '',
                         nom: d.nom || '',
                         nomComplet: `${d.prenom || ''} ${d.nom || ''}`.trim(),
-                        poste: d.poste || ''
+                        poste: d.poste || '',
+                        numero: (d.numero >= 1 && d.numero <= 14) ? Number(d.numero) : null
                     };
                 });
 
@@ -184,6 +185,7 @@
                 document.getElementById('vue-terrain-match').innerHTML = rendreTerrainHTML({
                     dispositif: tactique.dispositif,
                     titulaires: tactique.titulaires,
+                    numeros: tactique.numeros,
                     joueursMap,
                     statsMatch: matchData.stats_joueurs || {},
                     notesMoyennes,
@@ -197,7 +199,12 @@
                     carteBanc.classList.remove('hidden');
                     document.getElementById('liste-banc-match').innerHTML = rempValides.map((id, idx) => {
                         const j = joueursMap[id];
-                        const numRemp = 12 + idx;
+                        const numRemp = obtenirNumeroJoueur(id, {
+                            numeros: tactique.numeros,
+                            joueursMap,
+                            benchIndex: idx,
+                            dispositif: tactique.dispositif
+                        });
                         const st = (matchData.stats_joueurs || {})[id] || {};
                         const moy = notesMoyennes[id] ? ` · ⭐ ${notesMoyennes[id]}` : '';
                         let ev = '';
@@ -238,7 +245,12 @@
                         const j = joueursMap[jId];
                         const posteInfo = configDisp.postes[idx] || {};
                         const codePoste = posteInfo.code || '';
-                        const numMaillot = posteInfo.num || (idx + 1);
+                        const numMaillot = obtenirNumeroJoueur(jId, {
+                            numeros: tactique.numeros,
+                            joueursMap,
+                            slotIndex: idx,
+                            dispositif: tactique.dispositif
+                        });
                         const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
                         return `
                             <div class="joueur-ligne">
@@ -257,7 +269,12 @@
                     htmlNoter += `<div class="muted" style="font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px;">🪑 Remplaçants</div>`;
                     htmlNoter += rempValides.map((jId, idx) => {
                         const j = joueursMap[jId];
-                        const numRemp = 12 + idx;
+                        const numRemp = obtenirNumeroJoueur(jId, {
+                            numeros: tactique.numeros,
+                            joueursMap,
+                            benchIndex: idx,
+                            dispositif: tactique.dispositif
+                        });
                         const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
                         return `
                             <div class="joueur-ligne">

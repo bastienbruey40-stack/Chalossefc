@@ -140,7 +140,14 @@ export function extraireCompoTactique(matchData = {}) {
         const remplacants = Array.isArray(t.remplacants)
             ? t.remplacants.filter(id => id && !idsTitulaires.has(id))
             : [];
-        return { dispositif: disp, titulaires, remplacants };
+        const numeros = {};
+        if (t.numeros && typeof t.numeros === 'object') {
+            for (const [jId, val] of Object.entries(t.numeros)) {
+                const n = parseInt(val, 10);
+                if (jId && !isNaN(n) && n >= 1 && n <= 14) numeros[jId] = n;
+            }
+        }
+        return { dispositif: disp, titulaires, remplacants, numeros };
     }
 
     // Rétrocompatibilité : répartit les 11 premiers dans le 4-3-3 et le reste sur le banc
@@ -148,7 +155,31 @@ export function extraireCompoTactique(matchData = {}) {
     const titulaires = {};
     ancien.slice(0, 11).forEach((id, idx) => { titulaires[idx] = id; });
     const remplacants = ancien.slice(11);
-    return { dispositif: "4-3-3", titulaires, remplacants };
+    return { dispositif: "4-3-3", titulaires, remplacants, numeros: {} };
+}
+
+// Résout le numéro de maillot d'un joueur (1 à 14) : numéro du match > numéro profil > numéro par défaut du poste/banc
+export function obtenirNumeroJoueur(joueurId, {
+    numeros = {},
+    joueursMap = {},
+    slotIndex = null,
+    benchIndex = null,
+    dispositif = "4-3-3"
+} = {}) {
+    const nMatch = parseInt(numeros?.[joueurId], 10);
+    if (!isNaN(nMatch) && nMatch >= 1 && nMatch <= 14) return nMatch;
+
+    const nProfil = parseInt(joueursMap?.[joueurId]?.numero, 10);
+    if (!isNaN(nProfil) && nProfil >= 1 && nProfil <= 14) return nProfil;
+
+    if (slotIndex !== null && slotIndex !== undefined) {
+        const config = DISPOSITIFS[dispositif] || DISPOSITIFS["4-3-3"];
+        return config.postes[slotIndex]?.num || (slotIndex + 1);
+    }
+    if (benchIndex !== null && benchIndex !== undefined && benchIndex >= 0) {
+        return Math.min(14, 12 + benchIndex);
+    }
+    return null;
 }
 
 // Convertit la structure tactique en tableau plat `compo` (11 titulaires + remplaçants) pour les stats et notations
@@ -230,6 +261,7 @@ export const SVG_LIGNES_TERRAIN = `
 export function rendreTerrainHTML({
     dispositif = "4-3-3",
     titulaires = {},
+    numeros = {},
     joueursMap = {},
     statsMatch = {},
     notesMoyennes = {},
@@ -242,7 +274,7 @@ export function rendreTerrainHTML({
         const joueur = joueurId ? joueursMap[joueurId] : null;
         const estGB = index === 0;
         const estActif = interactif && slotSelectionne === index;
-        const numero = poste.num || (index + 1);
+        const numeroDefaut = poste.num || (index + 1);
 
         if (!joueur) {
             return `
@@ -251,15 +283,21 @@ export function rendreTerrainHTML({
                         data-slot="${index}"
                         ${interactif ? '' : 'disabled'}>
                     <span class="pitch-jersey-wrap">
-                        ${svgMaillotTerrain({ numero, estGB, vide: true, texteVide: interactif ? '+' : numero })}
+                        ${svgMaillotTerrain({ numero: numeroDefaut, estGB, vide: true, texteVide: interactif ? '+' : numeroDefaut })}
                     </span>
                     <span class="pitch-label">
-                        <span class="pitch-num">${numero}</span>
+                        <span class="pitch-num">${numeroDefaut}</span>
                         <span class="pitch-role">${echapper(poste.code)}</span>
                     </span>
                 </button>`;
         }
 
+        const numero = obtenirNumeroJoueur(joueurId, {
+            numeros,
+            joueursMap,
+            slotIndex: index,
+            dispositif
+        });
         const nomAffiche = nomCourtTerrain(joueur);
         const st = statsMatch[joueurId] || {};
         const noteMoy = notesMoyennes[joueurId];
@@ -398,9 +436,19 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
 
                     const noteM = notesParMatch.get(mDoc.id);
                     const moyM = noteM ? (noteM.total / noteM.nb).toFixed(1) : null;
+                    const numMatch = obtenirNumeroJoueur(joueurId, {
+                        numeros: tactique.numeros,
+                        joueursMap: { [joueurId]: j },
+                        slotIndex: titulaireSlot !== -1 ? titulaireSlot : null,
+                        benchIndex: estSurBanc ? tactique.remplacants.indexOf(joueurId) : null,
+                        dispositif: tactique.dispositif
+                    });
+                    const codePosteRaw = titulaireSlot !== -1
+                        ? (DISPOSITIFS[tactique.dispositif]?.postes[titulaireSlot]?.code || '')
+                        : '';
                     const codeP = titulaireSlot !== -1
-                        ? (DISPOSITIFS[tactique.dispositif]?.postes[titulaireSlot]?.code || 'Tit.')
-                        : 'Banc';
+                        ? `Tit.${numMatch ? ` n°${numMatch}` : ''}${codePosteRaw ? ` · ${codePosteRaw}` : ''}`
+                        : (estSurBanc || dansCompo ? `Banc${numMatch ? ` n°${numMatch}` : ''}` : 'Match');
 
                     historiqueMatchs.push({
                         id: mDoc.id,
@@ -420,14 +468,18 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
 
             historiqueMatchs.sort((a, b) => b.ts - a.ts);
             const moyenneSaison = nbVotes > 0 ? (totalNotes / nbVotes).toFixed(1) : '–';
-            const estGB = poste.toLowerCase() === 'gardien' || numeroMaillot === 1;
+            const numProfil = (j.numero >= 1 && j.numero <= 14) ? Number(j.numero) : null;
+            const numAffiche = numeroMaillot || numProfil;
+            const estGB = poste.toLowerCase() === 'gardien' || numAffiche === 1;
 
             let badgeMatchCourant = '';
-            if (matchCourantId && numeroMaillot) {
+            if (matchCourantId && numAffiche) {
                 const txtRole = codePosteMatch === 'Remp.'
-                    ? `Remplaçant n°${numeroMaillot}`
-                    : `Titulaire n°${numeroMaillot}${codePosteMatch ? ` · ${codePosteMatch}` : ''}`;
+                    ? `Remplaçant n°${numAffiche}`
+                    : `Titulaire n°${numAffiche}${codePosteMatch ? ` · ${codePosteMatch}` : ''}`;
                 badgeMatchCourant = `<span class="tag" style="background:var(--jaune-doux); color:var(--texte); border-color:var(--jaune);">${echapper(txtRole)}</span>`;
+            } else if (numProfil) {
+                badgeMatchCourant = `<span class="tag" style="background:var(--jaune-doux); color:var(--texte); border-color:var(--jaune);">n°${numProfil}</span>`;
             }
 
             const htmlHistorique = historiqueMatchs.length === 0
@@ -458,7 +510,7 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
             boite.innerHTML = `
                 <div class="player-profile-header">
                     <div class="player-profile-jersey">
-                        ${svgMaillotTerrain({ numero: numeroMaillot || 'FC', estGB })}
+                        ${svgMaillotTerrain({ numero: numAffiche || 'FC', estGB })}
                     </div>
                     <div class="player-profile-meta">
                         <h3 class="modal-title" style="margin-bottom:4px;">${echapper(nomComplet)}</h3>

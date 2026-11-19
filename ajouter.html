@@ -51,6 +51,14 @@
                 </button>
             </div>
 
+            <div class="num-picker-box" style="margin-top: 16px;">
+                <div class="num-picker-head">
+                    <span>👕 Numéro de maillot habituel (optionnel, 1 à 14)</span>
+                    <button type="button" class="num-pill-auto active" id="btn-num-auto">Auto</button>
+                </div>
+                <div class="num-picker-grid" id="grille-num-joueur"></div>
+            </div>
+
             <button class="btn" type="submit" id="btn-creer">Ajouter le joueur</button>
             <a href="effectif.html" class="btn-retour">Voir l'effectif</a>
         </form>
@@ -63,6 +71,32 @@
         import { toast, flash, chargement } from "./js/ui.js";
 
         let posteChoisi = 'Milieu';
+        let numeroChoisi = null;
+
+        const grilleNums = document.getElementById('grille-num-joueur');
+        const btnNumAuto = document.getElementById('btn-num-auto');
+        grilleNums.innerHTML = Array.from({ length: 14 }, (_, i) => i + 1)
+            .map(n => `<button type="button" class="num-pill" data-num="${n}">${n}</button>`)
+            .join('');
+
+        function majSelectionNum() {
+            btnNumAuto.classList.toggle('active', numeroChoisi === null);
+            grilleNums.querySelectorAll('[data-num]').forEach(b =>
+                b.classList.toggle('active', Number(b.dataset.num) === numeroChoisi)
+            );
+        }
+
+        btnNumAuto.addEventListener('click', () => {
+            numeroChoisi = null;
+            majSelectionNum();
+        });
+        grilleNums.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-num]');
+            if (!btn) return;
+            const n = Number(btn.dataset.num);
+            numeroChoisi = (numeroChoisi === n) ? null : n;
+            majSelectionNum();
+        });
 
         document.querySelectorAll('#choix-poste [data-poste]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -89,13 +123,15 @@
             const bouton = document.getElementById('btn-creer');
             chargement(bouton, true);
             try {
-                await addDoc(collection(db, "utilisateurs"), {
+                const payload = {
                     prenom: prenom,
                     nom: nom,
                     poste: posteChoisi,
                     role: "joueur"
-                });
-                flash(`${prenom} ${nom} (${posteChoisi}) a rejoint l'effectif !`);
+                };
+                if (numeroChoisi !== null) payload.numero = numeroChoisi;
+                await addDoc(collection(db, "utilisateurs"), payload);
+                flash(`${prenom} ${nom} (${posteChoisi}${numeroChoisi ? ` · n°${numeroChoisi}` : ''}) a rejoint l'effectif !`);
                 window.location.href = "effectif.html";
             } catch (err) {
                 toast("Opération bloquée : " + err.message, 'error', 6000);

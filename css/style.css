@@ -1060,5 +1060,73 @@ a.player-history-item:hover { border-color: var(--jaune); }
 .player-history-main small { font-size: .74rem; }
 .player-history-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
+/* =========================================================
+   SÉLECTEUR DE NUMÉRO DE MAILLOT (1 À 14)
+   ========================================================= */
+.num-picker-box {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin: 10px 0 12px;
+    text-align: left;
+}
+.num-picker-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 8px; font-size: .82rem; font-weight: 700;
+}
+.num-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+}
+.num-pill {
+    height: 36px; border-radius: 10px;
+    font-weight: 800; font-size: .88rem; font-variant-numeric: tabular-nums;
+    border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--texte);
+    cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    line-height: 1; position: relative;
+    transition: border-color .12s, background .12s, transform .1s, box-shadow .12s;
+}
+.num-pill:hover { border-color: var(--jaune); transform: translateY(-1px); }
+.num-pill.active {
+    background: var(--jaune); color: #111; border-color: var(--jaune);
+    box-shadow: 0 0 0 3px var(--jaune-doux);
+}
+.num-pill.used:not(.active) {
+    border-style: dashed;
+    opacity: .82;
+}
+.num-pill.used:not(.active)::after {
+    content: ""; position: absolute; top: 3px; right: 3px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--jaune);
+}
+.num-pill-auto {
+    height: 36px; padding: 0 10px; border-radius: 10px;
+    font-weight: 700; font-size: .78rem;
+    border: 1.5px solid var(--border);
+    background: var(--surface); color: var(--texte-2); cursor: pointer;
+    transition: .12s;
+}
+.num-pill-auto.active {
+    background: var(--jaune-doux); color: var(--texte); border-color: var(--jaune);
+}
+.bench-num.clickable {
+    cursor: pointer;
+    border: 1.5px solid rgba(255, 204, 0, .55);
+    transition: transform .12s, box-shadow .12s;
+}
+.bench-num.clickable:hover {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 3px var(--jaune-doux);
+}
+@media (max-width: 400px) {
+    .num-picker-grid { gap: 4px; }
+    .num-pill { height: 32px; font-size: .82rem; border-radius: 8px; }
+}
+
 
 

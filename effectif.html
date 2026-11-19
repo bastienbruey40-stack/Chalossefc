@@ -127,12 +127,16 @@
                         <button type="button" class="btn-supprimer" data-id="${j.id}" title="Supprimer ce joueur" aria-label="Supprimer ce joueur">🗑️</button>
                        </div>`;
 
+                const tagNumero = (j.numero >= 1 && j.numero <= 14)
+                    ? ` <span class="tag" style="background:var(--jaune-doux); color:var(--texte); border-color:var(--jaune);">n°${j.numero}</span>`
+                    : '';
+
                 return `
                     <div class="player-card${modeSelection ? ' selectable' : ''}${coche ? ' selected' : ''}" data-card-id="${j.id}" style="cursor:pointer">
                         <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
                         <div class="info">
                             <strong>${echapper(j.prenom)} ${echapper((j.nom || '').toUpperCase())}</strong>
-                            <span class="tag">${echapper(j.poste || 'Poste non renseigné')}</span>
+                            <span class="tag">${echapper(j.poste || 'Poste non renseigné')}</span>${tagNumero}
                         </div>
                         ${actionsAdmin}
                     </div>`;
@@ -235,19 +239,31 @@
                     champs: [
                         { nom: 'prenom', label: 'Prénom', valeur: joueur.prenom || '' },
                         { nom: 'nom', label: 'Nom', valeur: joueur.nom || '' },
-                        { nom: 'poste', label: 'Poste (Gardien, Défenseur, Milieu, Attaquant)', valeur: joueur.poste || 'Milieu' }
+                        { nom: 'poste', label: 'Poste (Gardien, Défenseur, Milieu, Attaquant)', valeur: joueur.poste || 'Milieu' },
+                        { nom: 'numero', label: 'Numéro de maillot (1 à 14, optionnel)', type: 'number', valeur: joueur.numero || '', placeholder: 'Auto', attrs: { min: 1, max: 14, step: 1 } }
                     ]
                 });
                 if (!res || !res.prenom.trim() || !res.nom.trim()) return;
+                const numBrut = String(res.numero ?? '').trim();
+                let numVal = null;
+                if (numBrut !== '') {
+                    numVal = parseInt(numBrut, 10);
+                    if (isNaN(numVal) || numVal < 1 || numVal > 14 || String(numVal) !== numBrut && Number(numBrut) !== numVal) {
+                        toast("Le numéro de maillot doit être compris entre 1 et 14.", 'error');
+                        return;
+                    }
+                }
                 try {
                     await updateDoc(doc(db, "utilisateurs", joueur.id), {
                         prenom: res.prenom.trim(),
                         nom: res.nom.trim(),
-                        poste: res.poste.trim() || 'Milieu'
+                        poste: res.poste.trim() || 'Milieu',
+                        numero: numVal
                     });
                     joueur.prenom = res.prenom.trim();
                     joueur.nom = res.nom.trim();
                     joueur.poste = res.poste.trim() || 'Milieu';
+                    joueur.numero = numVal;
                     trierJoueurs();
                     afficher();
                     toast('Joueur mis à jour');
