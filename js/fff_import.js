@@ -6,9 +6,9 @@
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { db } from "./firebase.js";
 
-export const CLE_IMPORT_FFF = 'chalosse_fff_2026_2027_v3_clean';
+export const CLE_IMPORT_FFF = 'chalosse_fff_2026_2027_v4_empty';
 
-// Liste des joueurs fictifs de l'étape précédente à retirer automatiquement
+// Liste normalisée (sans accents) des joueurs fictifs de l'étape précédente à retirer automatiquement
 const JOUEURS_FICTIFS_A_NETTOYER = new Set([
     "bastien bruey",
     "lucas dufour",
@@ -20,15 +20,15 @@ const JOUEURS_FICTIFS_A_NETTOYER = new Set([
     "hugo bats",
     "antoine lesgourgues",
     "mathieu darracq",
-    "clément lafitte",
+    "clement lafitte",
     "florian mora",
     "baptiste lasserre",
     "quentin cazenave",
-    "théo dupouy",
+    "theo dupouy",
     "alexandre brettes",
     "dylan larrieu",
-    "dylan лаrrieu",
-    "enzo carrère"
+    "dylan rrieu",
+    "enzo carrere"
 ]);
 
 export const MATCHS_FFF_CHALOSSE = [
@@ -139,7 +139,7 @@ export async function resoudreOuCreerJoueursParNom(listeNomsPostes) {
         const norm = normaliserNom(brut);
 
         // 1. Recherche dans les joueurs déjà créés (Prénom Nom, Nom Prénom, ou Nom de famille unique)
-        let trouve = joueursExistants.find(j =>
+        const trouve = joueursExistants.find(j =>
             j.complet1 === norm ||
             j.complet2 === norm ||
             (j.nomNorm && j.nomNorm === norm) ||
@@ -155,7 +155,6 @@ export async function resoudreOuCreerJoueursParNom(listeNomsPostes) {
         const morceaux = brut.split(/\s+/);
         let prenom = morceaux[0];
         let nom = morceaux.slice(1).join(' ');
-        // Mise en forme propre (ex: "Bastien" / "Dupont")
         prenom = prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
         if (!nom) nom = "";
 
@@ -168,7 +167,7 @@ export async function resoudreOuCreerJoueursParNom(listeNomsPostes) {
 
         const prenomNorm = normaliserNom(prenom);
         const nomNorm = normaliserNom(nom);
-        const nouveau = {
+        joueursExistants.push({
             id: docRef.id,
             prenom,
             nom,
@@ -177,29 +176,42 @@ export async function resoudreOuCreerJoueursParNom(listeNomsPostes) {
             nomNorm,
             complet1: `${prenomNorm} ${nomNorm}`.trim(),
             complet2: `${nomNorm} ${prenomNorm}`.trim()
-        };
-        joueursExistants.push(nouveau);
+        });
         idsResultat.push(docRef.id);
     }
 
     return idsResultat;
 }
 
-// Importe les matchs FFF SANS joueurs fictifs et nettoie les compos auto-générées précédentes
-export async function importerMatchsFFF() {
-    // 1. Nettoyage des éventuels joueurs fictifs créés lors du test précédent
+let promesseEnCours = null;
+
+// Importe les matchs FFF SANS joueurs fictifs et nettoie intégralement les compos auto-générées
+export function importerMatchsFFF({ forcerVidageCompos = false } = {}) {
+    if (promesseEnCours) return promesseEnCours;
+    promesseEnCours = executerImportFFF({ forcerVidageCompos }).finally(() => {
+        promesseEnCours = null;
+    });
+    return promesseEnCours;
+}
+
+async function executerImportFFF({ forcerVidageCompos = false } = {}) {
+    // 1. Nettoyage complet des joueurs fictifs créés lors de l'étape précédente
     const usersSnap = await getDocs(collection(db, "utilisateurs"));
     const idsFictifs = new Set();
+    const idsJoueursValides = new Set();
     const promessesNettoyage = [];
 
     usersSnap.forEach(d => {
         const data = d.data();
-        if (data.role === "joueur") {
-            const nomComplet = `${data.prenom || ''} ${data.nom || ''}`.trim().toLowerCase();
-            if (JOUEURS_FICTIFS_A_NETTOYER.has(nomComplet)) {
-                idsFictifs.add(d.id);
-                promessesNettoyage.push(deleteDoc(doc(db, "utilisateurs", d.id)));
-            }
+        const nomBrut = `${data.prenom || ''} ${data.nom || ''}`.trim();
+        const nomNorm = normaliserNom(nomBrut);
+        const contientCyrillique = /[\u0400-\u04FF]/.test(nomBrut);
+
+        if (data.role === "joueur" && (JOUEURS_FICTIFS_A_NETTOYER.has(nomNorm) || contientCyrillique)) {
+            idsFictifs.add(d.id);
+            promessesNettoyage.push(deleteDoc(doc(db, "utilisateurs", d.id)));
+        } else {
+            idsJoueursValides.add(d.id);
         }
     });
 
@@ -207,25 +219,69 @@ export async function importerMatchsFFF() {
         await Promise.all(promessesNettoyage);
     }
 
-    // 2. Synchronisation des matchs FFF (sans joueurs dans les compos)
+    // 2. Indexation des matchs FFF attendus
+    const fffParCle = new Map();
+    for (const m of MATCHS_FFF_CHALOSSE) {
+        fffParCle.set(`${m.equipe_type}_${m.date}`, m);
+    }
+
+    // 3. Inspection de TOUS les matchs existants dans Firestore
     const snap = await getDocs(collection(db, "matchs"));
-    const existants = new Map();
+    const clesPresentes = new Set();
+
+    let ajoutes = 0;
+    let misAJour = 0;
+    let composVidees = 0;
+    const promesses = [];
 
     snap.forEach(d => {
         const data = d.data();
         const cle = `${data.equipe_type || 'premiere'}_${data.date || ''}`;
-        existants.set(cle, { id: d.id, data });
+        clesPresentes.add(cle);
+
+        const compoActuelle = Array.isArray(data.compo) ? data.compo : [];
+        const idsDansTactique = [
+            ...Object.values(data.compo_tactique?.titulaires || {}),
+            ...(Array.isArray(data.compo_tactique?.remplacants) ? data.compo_tactique.remplacants : [])
+        ].filter(Boolean);
+
+        const aUneCompo =
+            compoActuelle.length > 0 ||
+            Boolean(data.compo_tactique) ||
+            (data.stats_joueurs && Object.keys(data.stats_joueurs).length > 0);
+
+        const contientIdInvalide =
+            compoActuelle.some(id => !idsJoueursValides.has(id)) ||
+            idsDansTactique.some(id => !idsJoueursValides.has(id));
+
+        const mFFF = fffParCle.get(cle);
+        const maj = {};
+        let aModifier = false;
+
+        if (mFFF && mFFF.score_chalosse !== null && (data.score_chalosse === undefined || data.score_chalosse === null)) {
+            maj.score_chalosse = mFFF.score_chalosse;
+            maj.score_adversaire = mFFF.score_adversaire;
+            aModifier = true;
+        }
+
+        if (aUneCompo && (forcerVidageCompos === true || Boolean(mFFF) || contientIdInvalide)) {
+            maj.compo = [];
+            maj.compo_tactique = null;
+            maj.stats_joueurs = {};
+            composVidees++;
+            aModifier = true;
+        }
+
+        if (aModifier) {
+            misAJour++;
+            promesses.push(updateDoc(doc(db, "matchs", d.id), maj));
+        }
     });
 
-    let ajoutes = 0;
-    let misAJour = 0;
-    const promesses = [];
-
+    // 4. Ajout des matchs FFF manquants (avec compositions vides)
     for (const m of MATCHS_FFF_CHALOSSE) {
         const cle = `${m.equipe_type}_${m.date}`;
-        const deja = existants.get(cle);
-
-        if (!deja) {
+        if (!clesPresentes.has(cle)) {
             ajoutes++;
             promesses.push(addDoc(collection(db, "matchs"), {
                 equipe_type: m.equipe_type,
@@ -236,29 +292,6 @@ export async function importerMatchsFFF() {
                 score_adversaire: m.score_adversaire,
                 compo: []
             }));
-        } else {
-            const maj = {};
-            let aModifier = false;
-
-            if (m.score_chalosse !== null && (deja.data.score_chalosse === undefined || deja.data.score_chalosse === null)) {
-                maj.score_chalosse = m.score_chalosse;
-                maj.score_adversaire = m.score_adversaire;
-                aModifier = true;
-            }
-
-            // Si la compo du match contenait les joueurs fictifs générés précédemment, on la vide proprement
-            const compoActuelle = Array.isArray(deja.data.compo) ? deja.data.compo : [];
-            if (idsFictifs.size > 0 && compoActuelle.some(id => idsFictifs.has(id))) {
-                maj.compo = [];
-                maj.compo_tactique = null;
-                maj.stats_joueurs = {};
-                aModifier = true;
-            }
-
-            if (aModifier) {
-                misAJour++;
-                promesses.push(updateDoc(doc(db, "matchs", deja.id), maj));
-            }
         }
     }
 
@@ -266,5 +299,5 @@ export async function importerMatchsFFF() {
         await Promise.all(promesses);
     }
     localStorage.setItem(CLE_IMPORT_FFF, '1');
-    return { ajoutes, misAJour, composCreees: 0 };
+    return { ajoutes, misAJour, composVidees, joueursSupprimes: idsFictifs.size };
 }

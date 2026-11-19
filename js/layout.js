@@ -2,6 +2,7 @@
 import { onAuthStateChanged, signOut, sendPasswordResetEmail, deleteUser } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { auth, chargerProfil } from "./firebase.js";
 import { afficherFlash, flash, confirmer, ouvrirModal, toast, initiales, echapper } from "./ui.js";
+import { importerMatchsFFF, CLE_IMPORT_FFF } from "./fff_import.js";
 
 const SVG = {
     home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
@@ -193,6 +194,17 @@ onAuthStateChanged(auth, async (user) => {
     avatars.forEach(e => e.textContent = profil?.prenom ? initiales(profil.prenom, profil.nom) : nom.charAt(0).toUpperCase());
     if (profil?.role === 'admin') {
         document.querySelectorAll('.nav-admin, .sheet-admin').forEach(e => e.classList.remove('hidden'));
+        if (!localStorage.getItem(CLE_IMPORT_FFF)) {
+            try {
+                const res = await importerMatchsFFF({ forcerVidageCompos: true });
+                localStorage.setItem(CLE_IMPORT_FFF, '1');
+                if (res.ajoutes > 0 || res.misAJour > 0 || res.composVidees > 0 || res.joueursSupprimes > 0) {
+                    flash(`Compositions nettoyées (${res.composVidees} match(s), ${res.joueursSupprimes} joueur(s) fictif(s) retiré(s)).`, 'info');
+                    window.location.reload();
+                    return;
+                }
+            } catch (e) { console.error(e); }
+        }
     }
 });
 

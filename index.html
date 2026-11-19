@@ -58,7 +58,6 @@
         import { db, auth, chargerProfil } from "./js/firebase.js";
         import { versDate } from "./js/ui.js";
         import { carteMatch, activerActionsMatchs } from "./js/matchs.js";
-        import { importerMatchsFFF, CLE_IMPORT_FFF } from "./js/fff_import.js";
 
         let estAdmin = false;
 
@@ -70,15 +69,6 @@
             if (profil?.role === "admin") {
                 estAdmin = true;
                 document.getElementById('zone-admin').classList.remove('hidden');
-                if (!localStorage.getItem(CLE_IMPORT_FFF)) {
-                    try {
-                        const { ajoutes, composCreees } = await importerMatchsFFF();
-                        if (ajoutes > 0 || composCreees > 0) {
-                            const { toast } = await import("./js/ui.js");
-                            toast(`FFF : ${ajoutes} match(s) et ${composCreees} composition(s) sur terrain importés !`);
-                        }
-                    } catch (e) { console.error(e); }
-                }
             }
             chargerDerniersMatchs();
         });

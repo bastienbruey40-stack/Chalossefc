@@ -61,7 +61,7 @@
         import { db, auth, chargerProfil } from "./js/firebase.js";
         import { toast, confirmer, chargement, formaterDate } from "./js/ui.js";
         import { carteMatch, activerActionsMatchs, trierParDate, estJoue } from "./js/matchs.js";
-        import { importerMatchsFFF, CLE_IMPORT_FFF } from "./js/fff_import.js";
+        import { importerMatchsFFF } from "./js/fff_import.js";
 
         let estAdmin = false;
         let tousLesMatchs = [];
@@ -78,27 +78,19 @@
             estAdmin = profil?.role === "admin";
             if (estAdmin) {
                 document.getElementById('outils-admin').classList.remove('hidden');
-                if (!localStorage.getItem(CLE_IMPORT_FFF)) {
-                    try {
-                        const { ajoutes, composCreees } = await importerMatchsFFF();
-                        if (ajoutes > 0 || composCreees > 0) {
-                            toast(`FFF : ${ajoutes} match(s) et ${composCreees} composition(s) tactique(s) ajoutés !`);
-                        }
-                    } catch (e) { console.error(e); }
-                }
             }
             chargerMatchs();
         });
 
         document.getElementById('btn-import-fff').addEventListener('click', async () => {
             const btn = document.getElementById('btn-import-fff');
-            chargement(btn, true, 'Import FFF…');
+            chargement(btn, true, 'Sync. FFF…');
             try {
-                const { ajoutes, misAJour, composCreees } = await importerMatchsFFF();
-                if (ajoutes === 0 && misAJour === 0 && composCreees === 0) {
-                    toast("Tous les matchs et compositions FFF sont déjà à jour !", 'info');
+                const { ajoutes, misAJour, composVidees } = await importerMatchsFFF({ forcerVidageCompos: true });
+                if (ajoutes === 0 && misAJour === 0 && composVidees === 0) {
+                    toast("Tous les matchs FFF sont déjà à jour (compositions vides) !", 'info');
                 } else {
-                    toast(`Synchronisé : ${ajoutes} match(s), ${composCreees} compo(s) sur terrain !`);
+                    toast(`Synchronisé : ${ajoutes} match(s) ajouté(s), ${composVidees} compo(s) vidée(s).`);
                     await chargerMatchs();
                 }
             } catch (e) {
