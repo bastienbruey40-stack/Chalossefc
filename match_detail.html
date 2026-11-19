@@ -20,6 +20,7 @@
                 <div class="toolbar-actions hidden" id="outils-admin-match">
                     <a href="gerer_compo.html" class="btn-chip primary" id="lien-gerer-compo">📋 Modifier la compo</a>
                     <button type="button" class="btn-chip" id="btn-editer-match">✏️ Infos match</button>
+                    <button type="button" class="btn-chip" id="btn-header-votants">👥 Votants (<span id="nb-votants-badge">0</span>)</button>
                     <button type="button" class="btn-chip" id="btn-suppr-notes-match" title="Effacer toutes les notes de ce match">🗑️ Effacer notes</button>
                 </div>
             </div>
@@ -67,8 +68,20 @@
 
         <!-- Onglet 3 : Classement Homme du match -->
         <div id="onglet-classement" class="contenu-onglet">
-            <div id="admin-votants" class="info-admin">
-                👥 Total des votants pour ce match : <span id="nb-votants">0</span>
+            <div id="admin-votants" class="card" style="display:none; margin-bottom:14px; background:var(--surface-2); border-left:4px solid var(--jaune);">
+                <div class="toolbar-row" style="margin-bottom:0;">
+                    <div>
+                        <strong>👥 Participation au vote :</strong>
+                        <span id="nb-votants" style="font-weight:800; font-size:1.05rem; margin-left:4px;">0</span> votant(s)
+                    </div>
+                    <button type="button" class="btn-chip" id="btn-toggle-votants" style="font-size:.8rem; padding:6px 12px;">👁️ Voir qui a voté</button>
+                </div>
+                <div id="liste-detail-votants" class="hidden" style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border);">
+                    <div class="muted" style="font-size:.76rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px;">
+                        Membres ayant participé au vote sur ce match (notes anonymes) :
+                    </div>
+                    <div id="conteneur-chips-votants" style="display:flex; flex-direction:column; gap:6px;"></div>
+                </div>
             </div>
             <div class="card" id="liste-classement">
                 <p class="muted" style="text-align:center; margin:0">Aucune note attribuée pour le moment.</p>
@@ -82,7 +95,7 @@
         import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { toast, confirmer, chargement, echapper, formaterDate, initiales } from "./js/ui.js";
         import { editerMatchComplet } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, obtenirNumeroJoueur, ouvrirFicheJoueur } from "./js/tactique.js";
 
@@ -147,9 +160,16 @@
                 }
 
                 const joueursMap = {};
+                const comptesMap = {};
                 const usersSnap = await getDocs(collection(db, "utilisateurs"));
                 usersSnap.forEach(u => {
                     const d = u.data();
+                    comptesMap[u.id] = {
+                        prenom: d.prenom || '',
+                        nom: d.nom || '',
+                        email: d.email || '',
+                        role: d.role || 'utilisateur'
+                    };
                     joueursMap[u.id] = {
                         id: u.id,
                         prenom: d.prenom || '',
@@ -207,8 +227,45 @@
                 rendreVueTerrain();
 
                 if (estAdmin) {
+                    const elBadge = document.getElementById('nb-votants-badge');
+                    if (elBadge) elBadge.textContent = votantsUniques.size;
+                    const elNb = document.getElementById('nb-votants');
+                    if (elNb) elNb.textContent = votantsUniques.size;
                     document.getElementById('admin-votants').style.display = 'block';
-                    document.getElementById('nb-votants').textContent = votantsUniques.size;
+
+                    const listeVotants = Array.from(votantsUniques).map(vId => {
+                        const c = comptesMap[vId];
+                        const prenom = c?.prenom || '';
+                        const nomFamille = c?.nom || '';
+                        const nomComplet = `${prenom} ${nomFamille}`.trim() || c?.email || 'Membre du club';
+                        return {
+                            id: vId,
+                            nomComplet,
+                            prenom,
+                            nomFamille,
+                            email: c?.email || ''
+                        };
+                    }).sort((a, b) => a.nomComplet.localeCompare(b.nomComplet, 'fr', { sensitivity: 'base' }));
+
+                    const conteneurVotants = document.getElementById('conteneur-chips-votants');
+                    if (conteneurVotants) {
+                        if (listeVotants.length === 0) {
+                            conteneurVotants.innerHTML = `<p class="muted" style="margin:0; font-size:.84rem;">Aucun vote enregistré pour l'instant sur ce match.</p>`;
+                        } else {
+                            conteneurVotants.innerHTML = listeVotants.map(v => `
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 10px; background:var(--surface); border:1px solid var(--border); border-radius:10px;">
+                                    <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                                        <span class="avatar" style="width:28px; height:28px; font-size:.72rem; flex-shrink:0;">${echapper(initiales(v.prenom, v.nomFamille))}</span>
+                                        <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                            <strong style="font-size:.88rem; display:block;">${echapper(v.nomComplet)}</strong>
+                                            ${v.email ? `<small class="muted" style="font-size:.74rem;">✉️ ${echapper(v.email)}</small>` : ''}
+                                        </div>
+                                    </div>
+                                    <span class="tag" style="margin:0; flex-shrink:0; background:rgba(34,197,94,.12); color:var(--vert); border-color:var(--vert); font-weight:700;">✓ A voté</span>
+                                </div>
+                            `).join('');
+                        }
+                    }
                 }
 
                 afficherClassement(statsMatch);
@@ -377,6 +434,25 @@
         // Bouton rapide pour aller voter depuis la bannière d'aide
         document.getElementById('btn-aller-noter')?.addEventListener('click', () => {
             changerOnglet('noter');
+        });
+
+        // Bouton admin pour afficher/masquer la liste détaillée des votants
+        document.getElementById('btn-toggle-votants')?.addEventListener('click', () => {
+            const liste = document.getElementById('liste-detail-votants');
+            const btn = document.getElementById('btn-toggle-votants');
+            if (!liste || !btn) return;
+            const masque = liste.classList.toggle('hidden');
+            btn.textContent = masque ? '👁️ Voir qui a voté' : '✕ Masquer la liste';
+        });
+
+        // Bouton dans l'en-tête admin "👥 Votants" -> bascule sur l'onglet classement et déplie la liste
+        document.getElementById('btn-header-votants')?.addEventListener('click', () => {
+            changerOnglet('classement');
+            const liste = document.getElementById('liste-detail-votants');
+            const btn = document.getElementById('btn-toggle-votants');
+            if (liste) liste.classList.remove('hidden');
+            if (btn) btn.textContent = '✕ Masquer la liste';
+            document.getElementById('admin-votants')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
 
         // Clic sur un joueur du terrain ou du banc -> ouvre la fiche résumé joueur
