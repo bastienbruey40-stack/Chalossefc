@@ -86,11 +86,11 @@
             const btn = document.getElementById('btn-import-fff');
             chargement(btn, true, 'Sync. FFF…');
             try {
-                const { ajoutes, misAJour, composVidees } = await importerMatchsFFF({ forcerVidageCompos: true });
-                if (ajoutes === 0 && misAJour === 0 && composVidees === 0) {
-                    toast("Tous les matchs FFF sont déjà à jour (compositions vides) !", 'info');
+                const { ajoutes, misAJour } = await importerMatchsFFF();
+                if (ajoutes === 0 && misAJour === 0) {
+                    toast("Tous les matchs FFF sont déjà à jour !", 'info');
                 } else {
-                    toast(`Synchronisé : ${ajoutes} match(s) ajouté(s), ${composVidees} compo(s) vidée(s).`);
+                    toast(`Synchronisé : ${ajoutes} match(s) ajouté(s), ${misAJour} score(s) mis à jour (compos conservées).`);
                     await chargerMatchs();
                 }
             } catch (e) {

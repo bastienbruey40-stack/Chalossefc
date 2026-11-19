@@ -105,6 +105,23 @@ export const DISPOSITIFS = {
             { num: 9,  code: "BUG", label: "Attaquant G",       categorie: "Attaquant", x: 36, y: 19 },
             { num: 11, code: "BUD", label: "Attaquant D",       categorie: "Attaquant", x: 64, y: 19 }
         ]
+    },
+    "3-4-3": {
+        nom: "3-4-3",
+        description: "3 défenseurs · 4 milieux · 3 attaquants",
+        postes: [
+            { num: 1,  code: "GB",  label: "Gardien",           categorie: "Gardien",   x: 50, y: 89 },
+            { num: 4,  code: "DCG", label: "Stoppeur gauche",   categorie: "Défenseur", x: 25, y: 72 },
+            { num: 5,  code: "DC",  label: "Défenseur central", categorie: "Défenseur", x: 50, y: 74 },
+            { num: 2,  code: "DCD", label: "Stoppeur droit",    categorie: "Défenseur", x: 75, y: 72 },
+            { num: 3,  code: "MG",  label: "Milieu gauche",     categorie: "Milieu",    x: 15, y: 47 },
+            { num: 6,  code: "MCG", label: "Milieu central G",  categorie: "Milieu",    x: 38, y: 50 },
+            { num: 8,  code: "MCD", label: "Milieu central D",  categorie: "Milieu",    x: 62, y: 50 },
+            { num: 7,  code: "MD",  label: "Milieu droit",      categorie: "Milieu",    x: 85, y: 47 },
+            { num: 11, code: "AG",  label: "Ailier gauche",     categorie: "Attaquant", x: 20, y: 21 },
+            { num: 9,  code: "BU",  label: "Buteur",            categorie: "Attaquant", x: 50, y: 16 },
+            { num: 10, code: "AD",  label: "Ailier droit",      categorie: "Attaquant", x: 80, y: 21 }
+        ]
     }
 };
 
