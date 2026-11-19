@@ -49,16 +49,19 @@ service cloud.firestore {
     match /notes/{noteId} {
       allow read: if estConnecte();
 
-      // Un utilisateur connecté ne peut enregistrer que SA propre note (entre 0 et 10)
+      // Tout membre connecté peut enregistrer ou modifier sa propre note
       allow create, update: if estConnecte() &&
-        (request.resource.data.voterId == request.auth.uid || request.resource.data.votant_id == request.auth.uid) &&
-        request.resource.data.note is number &&
-        request.resource.data.note >= 0 &&
-        request.resource.data.note <= 10 &&
-        noteId.matches('.*_' + request.auth.uid + '$');
+        (
+          request.resource.data.voterId == request.auth.uid ||
+          request.resource.data.votant_id == request.auth.uid ||
+          estAdmin()
+        );
 
-      // Seul un administrateur peut supprimer des notes
-      allow delete: if estAdmin();
+      // Un administrateur peut supprimer des notes, ou un utilisateur sa propre note
+      allow delete: if estAdmin() || (
+        estConnecte() &&
+        (resource.data.voterId == request.auth.uid || resource.data.votant_id == request.auth.uid)
+      );
     }
 
     // 4. COLLECTION "saisons"

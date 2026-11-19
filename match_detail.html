@@ -34,8 +34,19 @@
 
         <!-- Onglet 1 : Composition sur le terrain de football -->
         <div id="onglet-compo" class="contenu-onglet actif">
+            <div class="pitch-controls-bar">
+                <span class="pitch-controls-label">Afficher sur le terrain :</span>
+                <div class="pitch-toggle-group" id="toggle-mode-notes">
+                    <button type="button" class="pitch-toggle-btn active" data-mode-note="moyenne">⭐ Notes moyennes</button>
+                    <button type="button" class="pitch-toggle-btn" data-mode-note="perso">👤 Mes notes</button>
+                </div>
+            </div>
             <div id="vue-terrain-match">
                 <div class="skeleton" style="height: 440px;"></div>
+            </div>
+            <div id="aide-notes-perso" class="card hidden" style="margin-top: 12px; text-align: center; padding: 12px; font-size: .86rem;">
+                <span>👤 Vous n'avez pas encore noté les joueurs sur ce match.</span>
+                <button type="button" class="btn-chip primary" id="btn-aller-noter" style="margin-left: 8px; padding: 4px 10px; font-size: .8rem;">📝 Attribuer mes notes</button>
             </div>
             <div id="vue-banc-match" class="card bench-card hidden">
                 <strong style="font-size: .95rem;">🪑 Remplaçants</strong>
@@ -82,6 +93,8 @@
         let matchDataCourant = null;
         let notesDocsDuMatch = [];
         let notesExistantes = {};
+        let modeNoteActif = 'moyenne';
+        let donneesCompoCourante = null;
 
         if (matchId) {
             document.getElementById('lien-gerer-compo').href = `gerer_compo.html?match=${encodeURIComponent(matchId)}`;
@@ -181,46 +194,17 @@
                     }
                 }
 
-                // 1. Rendu du terrain de football
-                document.getElementById('vue-terrain-match').innerHTML = rendreTerrainHTML({
-                    dispositif: tactique.dispositif,
-                    titulaires: tactique.titulaires,
-                    numeros: tactique.numeros,
-                    joueursMap,
-                    statsMatch: matchData.stats_joueurs || {},
-                    notesMoyennes,
-                    interactif: false
-                });
-
-                // 2. Rendu du banc des remplaçants sous le terrain
                 const rempValides = tactique.remplacants.filter(id => joueursMap[id]);
-                const carteBanc = document.getElementById('vue-banc-match');
-                if (rempValides.length > 0) {
-                    carteBanc.classList.remove('hidden');
-                    document.getElementById('liste-banc-match').innerHTML = rempValides.map((id, idx) => {
-                        const j = joueursMap[id];
-                        const numRemp = obtenirNumeroJoueur(id, {
-                            numeros: tactique.numeros,
-                            joueursMap,
-                            benchIndex: idx,
-                            dispositif: tactique.dispositif
-                        });
-                        const st = (matchData.stats_joueurs || {})[id] || {};
-                        const moy = notesMoyennes[id] ? ` · ⭐ ${notesMoyennes[id]}` : '';
-                        let ev = '';
-                        if (st.buts > 0) ev += ` ⚽${st.buts > 1 ? st.buts : ''}`;
-                        if (st.passes > 0) ev += ` 🎯${st.passes > 1 ? st.passes : ''}`;
-                        if (st.jaunes > 0) ev += ` 🟨`;
-                        if (st.rouges > 0) ev += ` 🟥`;
-                        return `
-                            <div class="bench-chip" data-joueur-id="${echapper(id)}" data-num="${numRemp}" style="cursor:pointer" title="Voir la fiche de ${echapper(j.nomComplet)}">
-                                <span class="bench-num">${numRemp}</span>
-                                <span>${echapper(j.nomComplet)}${ev}<small class="muted">${moy}</small></span>
-                            </div>`;
-                    }).join('');
-                } else {
-                    carteBanc.classList.add('hidden');
-                }
+
+                // Mémorise les données tactiques et rend la vue terrain / banc
+                donneesCompoCourante = {
+                    tactique,
+                    joueursMap,
+                    statsMatchJoueurs: matchData.stats_joueurs || {},
+                    notesMoyennes,
+                    rempValides
+                };
+                rendreVueTerrain();
 
                 if (estAdmin) {
                     document.getElementById('admin-votants').style.display = 'block';
@@ -320,6 +304,81 @@
             }).join('');
         }
 
+        function rendreVueTerrain() {
+            if (!donneesCompoCourante) return;
+            const { tactique, joueursMap, statsMatchJoueurs, notesMoyennes, rempValides } = donneesCompoCourante;
+
+            // Mise à jour de l'état actif des boutons du sélecteur
+            document.querySelectorAll('#toggle-mode-notes [data-mode-note]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.modeNote === modeNoteActif);
+            });
+
+            // 1. Rendu du terrain de football
+            document.getElementById('vue-terrain-match').innerHTML = rendreTerrainHTML({
+                dispositif: tactique.dispositif,
+                titulaires: tactique.titulaires,
+                numeros: tactique.numeros,
+                joueursMap,
+                statsMatch: statsMatchJoueurs,
+                notesMoyennes,
+                notesPerso: notesExistantes,
+                modeNote: modeNoteActif,
+                interactif: false
+            });
+
+            // 2. Rendu du banc des remplaçants sous le terrain
+            const carteBanc = document.getElementById('vue-banc-match');
+            if (rempValides.length > 0) {
+                carteBanc.classList.remove('hidden');
+                document.getElementById('liste-banc-match').innerHTML = rempValides.map((id, idx) => {
+                    const j = joueursMap[id];
+                    const numRemp = obtenirNumeroJoueur(id, {
+                        numeros: tactique.numeros,
+                        joueursMap,
+                        benchIndex: idx,
+                        dispositif: tactique.dispositif
+                    });
+                    const st = statsMatchJoueurs[id] || {};
+                    const noteVal = modeNoteActif === 'perso' ? notesExistantes[id] : notesMoyennes[id];
+                    const badgeMoy = noteVal !== undefined
+                        ? ` · <span class="pitch-rating${modeNoteActif === 'perso' ? ' perso' : ''}" style="position:static; display:inline-block; vertical-align:middle; font-size:.66rem; padding:1px 6px;">⭐ ${noteVal}</span>`
+                        : '';
+                    let ev = '';
+                    if (st.buts > 0) ev += ` ⚽${st.buts > 1 ? st.buts : ''}`;
+                    if (st.passes > 0) ev += ` 🎯${st.passes > 1 ? st.passes : ''}`;
+                    if (st.jaunes > 0) ev += ` 🟨`;
+                    if (st.rouges > 0) ev += ` 🟥`;
+                    return `
+                        <div class="bench-chip" data-joueur-id="${echapper(id)}" data-num="${numRemp}" style="cursor:pointer" title="Voir la fiche de ${echapper(j.nomComplet)}">
+                            <span class="bench-num">${numRemp}</span>
+                            <span>${echapper(j.nomComplet)}${ev}${badgeMoy}</span>
+                        </div>`;
+                }).join('');
+            } else {
+                carteBanc.classList.add('hidden');
+            }
+
+            // Message d'aide si l'utilisateur affiche "Mes notes" mais n'a pas encore voté
+            const zoneAide = document.getElementById('aide-notes-perso');
+            if (zoneAide) {
+                const aVoteAuMoinsUn = Object.keys(notesExistantes).length > 0;
+                zoneAide.classList.toggle('hidden', modeNoteActif !== 'perso' || aVoteAuMoinsUn);
+            }
+        }
+
+        // Clic sur le sélecteur "⭐ Notes moyennes" / "👤 Mes notes"
+        document.getElementById('toggle-mode-notes')?.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-mode-note]');
+            if (!btn || btn.dataset.modeNote === modeNoteActif) return;
+            modeNoteActif = btn.dataset.modeNote;
+            rendreVueTerrain();
+        });
+
+        // Bouton rapide pour aller voter depuis la bannière d'aide
+        document.getElementById('btn-aller-noter')?.addEventListener('click', () => {
+            changerOnglet('noter');
+        });
+
         // Clic sur un joueur du terrain ou du banc -> ouvre la fiche résumé joueur
         document.getElementById('vue-terrain-match').addEventListener('click', (e) => {
             const node = e.target.closest('.pitch-node.filled[data-joueur-id]');
@@ -400,7 +459,10 @@
                 changerOnglet('classement');
             } catch (error) {
                 console.error("Erreur d'enregistrement :", error);
-                toast("Une erreur s'est produite lors de la sauvegarde.", 'error');
+                const msg = error.code === 'permission-denied'
+                    ? "Permission refusée : vérifiez les règles Firestore de la collection 'notes' dans la console Firebase."
+                    : (error.message || "Une erreur s'est produite lors de la sauvegarde.");
+                toast(msg, 'error', 6000);
             } finally {
                 chargement(bouton, false);
             }

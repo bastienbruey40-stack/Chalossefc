@@ -265,6 +265,8 @@ export function rendreTerrainHTML({
     joueursMap = {},
     statsMatch = {},
     notesMoyennes = {},
+    notesPerso = {},
+    modeNote = 'moyenne', // 'moyenne' ou 'perso'
     interactif = false,
     slotSelectionne = null
 } = {}) {
@@ -301,6 +303,11 @@ export function rendreTerrainHTML({
         const nomAffiche = nomCourtTerrain(joueur);
         const st = statsMatch[joueurId] || {};
         const noteMoy = notesMoyennes[joueurId];
+        const notePerso = notesPerso[joueurId];
+        const noteAffichee = modeNote === 'perso' ? notePerso : noteMoy;
+        const titreNote = modeNote === 'perso'
+            ? (notePerso !== undefined ? `Ma note : ${notePerso}/10` : 'Non noté')
+            : (noteMoy !== undefined ? `Note moyenne : ${noteMoy}/10` : '');
 
         let badgesEvents = '';
         if (st.buts > 0) badgesEvents += `<span class="pitch-ev" title="${st.buts} but(s)">⚽${st.buts > 1 ? st.buts : ''}</span>`;
@@ -308,8 +315,8 @@ export function rendreTerrainHTML({
         if (st.jaunes > 0) badgesEvents += `<span class="pitch-ev" title="Carton jaune">🟨</span>`;
         if (st.rouges > 0) badgesEvents += `<span class="pitch-ev" title="Carton rouge">🟥</span>`;
 
-        const badgeNote = noteMoy !== undefined
-            ? `<span class="pitch-rating" title="Note moyenne">⭐ ${noteMoy}</span>`
+        const badgeNote = noteAffichee !== undefined
+            ? `<span class="pitch-rating${modeNote === 'perso' ? ' perso' : ''}" title="${echapper(titreNote)}">⭐ ${noteAffichee}</span>`
             : '';
 
         return `
