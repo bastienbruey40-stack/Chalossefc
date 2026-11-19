@@ -15,12 +15,17 @@
 
     <main class="container">
         <header class="page-header">
-            <h1><img src="chalosse.webp" alt="" class="logo-header"> Comptes utilisateurs</h1>
-            <p>Personnes inscrites sur l'application (les joueurs se gèrent dans « Effectif »).</p>
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> Comptes &amp; Rôles</h1>
+            <p>Gérez les comptes inscrits et attribuez les droits d'administration (les joueurs de l'effectif se gèrent dans « Effectif »).</p>
         </header>
 
-        <div class="search">
-            <input type="search" id="recherche" placeholder="Rechercher par nom ou email…" autocomplete="off">
+        <div class="toolbar-row">
+            <div class="search">
+                <input type="search" id="recherche" placeholder="Rechercher par nom, email ou rôle…" autocomplete="off">
+            </div>
+            <div class="toolbar-actions">
+                <span class="count" id="compteur-comptes">0 compte(s)</span>
+            </div>
         </div>
 
         <div id="liste-comptes" class="cards-grid">
@@ -29,20 +34,23 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estSuperAdmin, SUPER_ADMIN_EMAIL } from "./js/firebase.js";
         import { toast, flash, confirmer, echapper, initiales } from "./js/ui.js";
 
         const conteneur = document.getElementById('liste-comptes');
         let comptes = [];
         let monUid = null;
+        let suisSuperAdmin = false;
 
-        // Accès réservé aux admins
+        // Accès réservé aux administrateurs
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
             const profil = await chargerProfil(user.uid).catch(() => null);
-            if (profil?.role === "admin") {
+            suisSuperAdmin = estSuperAdmin(user.email) || profil?.super_admin === true;
+
+            if (profil?.role === "admin" || suisSuperAdmin) {
                 monUid = user.uid;
                 chargerTousLesComptes();
             } else {
@@ -57,38 +65,85 @@
                 comptes = [];
                 snap.forEach(d => {
                     const data = d.data();
-                    if (data.role === "joueur") return; // les joueurs (foot) sont gérés dans Effectif
-                    comptes.push({ uid: d.id, ...data });
+                    if (data.role === "joueur") return; // les simples profils joueurs (foot) sont dans Effectif
+                    const email = data.email || '';
+                    const estCeSuper = estSuperAdmin(email) || data.super_admin === true;
+                    comptes.push({
+                        uid: d.id,
+                        ...data,
+                        estSuperAdmin: estCeSuper,
+                        role: estCeSuper ? "admin" : (data.role || "utilisateur")
+                    });
                 });
-                comptes.sort((a, b) => (a.role === 'admin' ? -1 : 1) - (b.role === 'admin' ? -1 : 1) || (a.prenom || '').localeCompare(b.prenom || ''));
+
+                // Tri : Super Admin d'abord, puis Admins, puis Utilisateurs, puis alphabétique
+                comptes.sort((a, b) => {
+                    const rangA = a.estSuperAdmin ? 0 : (a.role === 'admin' ? 1 : 2);
+                    const rangB = b.estSuperAdmin ? 0 : (b.role === 'admin' ? 1 : 2);
+                    if (rangA !== rangB) return rangA - rangB;
+                    return (a.prenom || '').localeCompare(b.prenom || '');
+                });
+
+                document.getElementById('compteur-comptes').textContent = `${comptes.length} compte${comptes.length > 1 ? 's' : ''}`;
                 afficher();
             } catch (error) {
                 console.error("Erreur:", error);
-                conteneur.innerHTML = `<p class="empty error-text">Erreur lors du chargement.</p>`;
+                conteneur.innerHTML = `<p class="empty error-text">Erreur lors du chargement des comptes.</p>`;
             }
         }
 
         function afficher() {
             const q = document.getElementById('recherche').value.trim().toLowerCase();
-            const liste = comptes.filter(c => `${c.prenom || ''} ${c.nom || ''} ${c.email || ''}`.toLowerCase().includes(q));
+            const liste = comptes.filter(c =>
+                `${c.prenom || ''} ${c.nom || ''} ${c.email || ''} ${c.role || ''} ${c.estSuperAdmin ? 'super admin' : ''}`.toLowerCase().includes(q)
+            );
+
             if (liste.length === 0) {
-                conteneur.innerHTML = `<p class="empty">Aucun compte utilisateur trouvé.</p>`;
+                conteneur.innerHTML = `<p class="empty">Aucun compte trouvé.</p>`;
                 return;
             }
+
             conteneur.innerHTML = liste.map(c => {
+                const estCeSuper = c.estSuperAdmin;
                 const estAdmin = c.role === "admin";
-                const action = c.uid !== monUid
-                    ? `<button type="button" class="btn-supprimer" data-uid="${c.uid}" title="Supprimer ce compte" aria-label="Supprimer ce compte">🗑️</button>`
-                    : `<span class="tag">Moi</span>`;
+                const estMoi = c.uid === monUid;
+
+                let tagRole = `<span class="tag user">👤 Utilisateur</span>`;
+                if (estCeSuper) {
+                    tagRole = `<span class="tag" style="background:var(--jaune); color:#111; font-weight:800; border-color:var(--jaune);">👑 Super Admin</span>`;
+                } else if (estAdmin) {
+                    tagRole = `<span class="tag admin">⭐ Admin</span>`;
+                }
+
+                // Boutons d'actions
+                let actionsHTML = '';
+                if (estCeSuper) {
+                    actionsHTML = `<div class="card-actions"><span class="tag" style="font-size:.74rem;">🛡️ Protégé</span></div>`;
+                } else if (estMoi) {
+                    actionsHTML = `<div class="card-actions"><span class="tag">Moi</span></div>`;
+                } else {
+                    const labelBoutonRole = estAdmin ? '👤 Passer Utilisateur' : '⭐ Passer Admin';
+                    const nouveauRole = estAdmin ? 'utilisateur' : 'admin';
+                    const classeBouton = estAdmin ? '' : 'primary';
+
+                    actionsHTML = `
+                        <div class="card-actions">
+                            <button type="button" class="btn-chip ${classeBouton}" data-changer-role="${echapper(c.uid)}" data-nouveau-role="${nouveauRole}" title="${estAdmin ? 'Rétrograder en utilisateur' : 'Promouvoir en administrateur'}" style="padding:6px 11px; font-size:.8rem;">
+                                ${labelBoutonRole}
+                            </button>
+                            <button type="button" class="btn-supprimer" data-uid="${echapper(c.uid)}" title="Supprimer ce compte" aria-label="Supprimer ce compte">🗑️</button>
+                        </div>`;
+                }
+
                 return `
                     <div class="player-card">
                         <span class="avatar">${echapper(initiales(c.prenom, c.nom))}</span>
                         <div class="info">
                             <strong>${echapper(c.prenom || "Compte")} ${echapper(c.nom || "incomplet")}</strong>
                             ${c.email ? `<span class="sub">✉️ ${echapper(c.email)}</span>` : ''}
-                            <span class="tag ${estAdmin ? 'admin' : 'user'}">${estAdmin ? 'Admin' : 'Utilisateur'}</span>
+                            <div style="margin-top:4px;">${tagRole}</div>
                         </div>
-                        ${action}
+                        ${actionsHTML}
                     </div>`;
             }).join('');
         }
@@ -96,19 +151,55 @@
         document.getElementById('recherche').addEventListener('input', afficher);
 
         conteneur.addEventListener('click', async (e) => {
-            const btn = e.target.closest('.btn-supprimer');
-            if (!btn) return;
-            const compte = comptes.find(c => c.uid === btn.dataset.uid);
-            const ok = await confirmer(`Le compte de ${compte?.prenom || 'cet utilisateur'} sera supprimé de l'application.`, {
-                titre: 'Supprimer ce compte ?', ok: 'Supprimer', danger: true
-            });
-            if (!ok) return;
-            try {
-                await deleteDoc(doc(db, "utilisateurs", btn.dataset.uid));
-                toast("Le compte a été supprimé.");
-                chargerTousLesComptes();
-            } catch (error) {
-                toast("Erreur lors de la suppression : " + error.message, 'error');
+            // 1. Changement de rôle (Utilisateur <-> Administrateur)
+            const btnRole = e.target.closest('[data-changer-role]');
+            if (btnRole) {
+                const uid = btnRole.dataset.changerRole;
+                const nouveauRole = btnRole.dataset.nouveauRole;
+                const compte = comptes.find(c => c.uid === uid);
+                const nomComplet = `${compte?.prenom || ''} ${compte?.nom || ''}`.trim() || 'cet utilisateur';
+                const labelRole = nouveauRole === 'admin' ? 'Administrateur' : 'Utilisateur';
+
+                const question = nouveauRole === 'admin'
+                    ? `Donner les droits Administrateur à ${nomComplet} ? Il pourra gérer les matchs, les compositions, l'effectif et les notes.`
+                    : `Retirer les droits Administrateur de ${nomComplet} ? Il redeviendra simple utilisateur.`;
+
+                const ok = await confirmer(question, {
+                    titre: `Passer ${nomComplet} en ${labelRole} ?`,
+                    ok: `Passer en ${labelRole}`,
+                    danger: nouveauRole !== 'admin'
+                });
+                if (!ok) return;
+
+                try {
+                    await updateDoc(doc(db, "utilisateurs", uid), {
+                        role: nouveauRole
+                    });
+                    toast(`${nomComplet} est désormais ${labelRole} !`);
+                    chargerTousLesComptes();
+                } catch (err) {
+                    console.error("Erreur de mise à jour du rôle :", err);
+                    toast("Erreur lors de la mise à jour : " + err.message, 'error');
+                }
+                return;
+            }
+
+            // 2. Suppression de compte
+            const btnSuppr = e.target.closest('.btn-supprimer');
+            if (btnSuppr) {
+                const compte = comptes.find(c => c.uid === btnSuppr.dataset.uid);
+                const nom = compte ? `${compte.prenom || ''} ${compte.nom || ''}`.trim() : 'cet utilisateur';
+                const ok = await confirmer(`Le compte de ${nom} sera définitivement supprimé de l'application.`, {
+                    titre: 'Supprimer ce compte ?', ok: 'Supprimer', danger: true
+                });
+                if (!ok) return;
+                try {
+                    await deleteDoc(doc(db, "utilisateurs", btnSuppr.dataset.uid));
+                    toast(`Le compte de ${nom} a été supprimé.`);
+                    chargerTousLesComptes();
+                } catch (error) {
+                    toast("Erreur lors de la suppression : " + error.message, 'error');
+                }
             }
         });
     </script>

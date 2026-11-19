@@ -22,6 +22,12 @@ export const app = _0x4f2a;
 export const db = getFirestore(_0x4f2a);
 export const auth = getAuth(_0x4f2a);
 
+export const SUPER_ADMIN_EMAIL = "bastienbruey1@gmail.com";
+
+export function estSuperAdmin(email) {
+    return Boolean(email && email.trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase());
+}
+
 export function estProfilJoueur(data) {
     if (!data || !data.prenom) return false;
     if (data.est_joueur === false) return false;
@@ -32,7 +38,15 @@ const _c = new Map();
 export function chargerProfil(uid) {
     if (!_c.has(uid)) {
         _c.set(uid, getDoc(doc(db, "utilisateurs", uid))
-            .then(s => s.exists() ? s.data() : null)
+            .then(s => {
+                if (!s.exists()) return null;
+                const data = s.data();
+                if (auth.currentUser?.email && estSuperAdmin(auth.currentUser.email)) {
+                    data.role = "admin";
+                    data.super_admin = true;
+                }
+                return data;
+            })
             .catch(e => { _c.delete(uid); throw e; }));
     }
     return _c.get(uid);

@@ -1,6 +1,6 @@
 // Navigation responsive : barre latérale (ordinateur) + barre d'onglets en bas (mobile/tablette)
 import { onAuthStateChanged, signOut, sendPasswordResetEmail, deleteUser } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { auth, chargerProfil } from "./firebase.js";
+import { auth, chargerProfil, estSuperAdmin } from "./firebase.js";
 import { afficherFlash, flash, confirmer, ouvrirModal, toast, initiales, echapper } from "./ui.js";
 
 const SVG = {
@@ -107,7 +107,9 @@ function afficherMonCompte() {
     const nom = profilCourant?.prenom
         ? `${profilCourant.prenom} ${profilCourant.nom || ''}`.trim()
         : email.split('@')[0];
-    const role = profilCourant?.role === 'admin' ? 'Administrateur' : 'Utilisateur / Joueur';
+    const superAdmin = estSuperAdmin(email) || profilCourant?.super_admin === true;
+    const role = superAdmin ? '👑 Super Administrateur' : (profilCourant?.role === 'admin' ? 'Administrateur' : 'Utilisateur / Joueur');
+    const classeTag = (superAdmin || profilCourant?.role === 'admin') ? 'admin' : 'user';
 
     ouvrirModal((boite, fermer) => {
         boite.innerHTML = `
@@ -126,7 +128,7 @@ function afficherMonCompte() {
                         <small>Nom</small>
                         <strong>${echapper(nom)}</strong>
                     </div>
-                    <span class="tag ${profilCourant?.role === 'admin' ? 'admin' : 'user'}">${echapper(role)}</span>
+                    <span class="tag ${classeTag}">${echapper(role)}</span>
                 </div>
             </div>
             <div class="modal-actions" style="flex-direction: column;">

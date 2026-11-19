@@ -84,7 +84,7 @@
             onAuthStateChanged,
             signOut
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth } from "./js/firebase.js";
+        import { db, auth, estSuperAdmin } from "./js/firebase.js";
         import { toast, flash, ouvrirModal, chargement, echapper } from "./js/ui.js";
 
         auth.languageCode = 'fr';
@@ -103,13 +103,21 @@
         }
 
         async function finaliserCreationCompte(user, prenom, nom, email) {
+            const superAdmin = estSuperAdmin(email);
             await setDoc(doc(db, "utilisateurs", user.uid), {
                 prenom: prenom,
                 nom: nom,
                 email: email,
-                role: "utilisateur",
-                attente_confirmation_mail: true
+                role: superAdmin ? "admin" : "utilisateur",
+                super_admin: superAdmin,
+                attente_confirmation_mail: !superAdmin
             });
+
+            if (superAdmin) {
+                flash("Bienvenue Super Administrateur ! Votre compte est activé avec tous les droits.");
+                window.location.href = "index.html";
+                return;
+            }
 
             passerEnAttenteConfirmation(user);
 

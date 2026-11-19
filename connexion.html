@@ -44,7 +44,7 @@
             deleteUser
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { auth, db } from "./js/firebase.js";
+        import { auth, db, estSuperAdmin } from "./js/firebase.js";
         import { toast, flash, formulaire, chargement, afficherFlash } from "./js/ui.js";
 
         auth.languageCode = 'fr';
@@ -71,8 +71,23 @@
                 // Vérifie si la fiche utilisateur existe dans Firestore
                 const snap = await getDoc(doc(db, "utilisateurs", user.uid));
                 const profil = snap.exists() ? snap.data() : null;
+                const superAdmin = estSuperAdmin(email);
 
                 if (!profil) {
+                    if (superAdmin) {
+                        await setDoc(doc(db, "utilisateurs", user.uid), {
+                            prenom: "Bastien",
+                            nom: "Bruey",
+                            email: email,
+                            role: "admin",
+                            super_admin: true,
+                            attente_confirmation_mail: false
+                        });
+                        flash("Bienvenue Super Administrateur !");
+                        window.location.href = "index.html";
+                        return;
+                    }
+
                     // Ce compte a été supprimé par l'administrateur dans Firestore !
                     // 1) Si une recréation était en attente après un reset de mot de passe :
                     let attenteRecreation = null;
@@ -105,7 +120,13 @@
                     return;
                 }
 
-                if (profil.attente_confirmation_mail && !user.emailVerified) {
+                if (superAdmin && (profil.role !== "admin" || !profil.super_admin || profil.attente_confirmation_mail)) {
+                    await updateDoc(doc(db, "utilisateurs", user.uid), {
+                        role: "admin",
+                        super_admin: true,
+                        attente_confirmation_mail: false
+                    }).catch(() => {});
+                } else if (profil.attente_confirmation_mail && !user.emailVerified) {
                     window.location.href = "inscription.html?attente=1";
                     return;
                 }

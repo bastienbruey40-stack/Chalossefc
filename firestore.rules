@@ -7,11 +7,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Vérifie que l'utilisateur connecté possède le rôle "admin" dans Firestore
+    // Fonction Super Admin basée sur l'adresse email de confiance
+    function estSuperAdmin() {
+      return estConnecte() && request.auth.token.email == "bastienbruey1@gmail.com";
+    }
+
+    // Vérifie que l'utilisateur connecté possède le rôle "admin" ou est super admin
     function estAdmin() {
-      return estConnecte() &&
-        exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "admin";
+      return estConnecte() && (
+        estSuperAdmin() ||
+        (exists(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "admin")
+      );
     }
 
     // 1. COLLECTION "utilisateurs" (Comptes & Joueurs de l'effectif)
@@ -19,16 +26,14 @@ service cloud.firestore {
       // Lecture réservée aux membres connectés du club
       allow read: if estConnecte();
 
-      // Inscription : un utilisateur ne peut créer QUE sa propre fiche et UNIQUEMENT avec le rôle "utilisateur"
-      // (Impossible de s'auto-attribuer le rôle "admin" !)
-      // L'admin peut quant à lui ajouter des fiches "joueur".
+      // Inscription : un utilisateur ne peut créer que sa propre fiche (le Super Admin est automatiquement admin)
       allow create: if estAdmin() || (
         estConnecte() &&
         request.auth.uid == userId &&
-        request.resource.data.role == "utilisateur"
+        (request.resource.data.role == "utilisateur" || estSuperAdmin())
       );
 
-      // Mise à jour : un utilisateur ne peut modifier que sa propre fiche SANS jamais pouvoir changer son champ "role"
+      // Mise à jour : l'admin/super admin peut changer les rôles (Utilisateur <-> Admin)
       allow update: if estAdmin() || (
         estConnecte() &&
         request.auth.uid == userId &&
