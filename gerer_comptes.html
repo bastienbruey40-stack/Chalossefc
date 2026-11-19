@@ -16,7 +16,7 @@
     <main class="container">
         <header class="page-header">
             <h1><img src="chalosse.webp" alt="" class="logo-header"> Comptes &amp; Rôles</h1>
-            <p>Gérez les comptes inscrits et attribuez les droits d'administration (les joueurs de l'effectif se gèrent dans « Effectif »).</p>
+            <p>Gérez les comptes inscrits. Seul le Super Administrateur peut modifier le rôle d'un compte (les joueurs de l'effectif se gèrent dans « Effectif »).</p>
         </header>
 
         <div class="toolbar-row">
@@ -126,11 +126,15 @@
                     const nouveauRole = estAdmin ? 'utilisateur' : 'admin';
                     const classeBouton = estAdmin ? '' : 'primary';
 
+                    // Seul le Super Administrateur a le droit de changer les rôles
+                    const boutonRoleHTML = suisSuperAdmin ? `
+                        <button type="button" class="btn-chip ${classeBouton}" data-changer-role="${echapper(c.uid)}" data-nouveau-role="${nouveauRole}" title="${estAdmin ? 'Rétrograder en utilisateur' : 'Promouvoir en administrateur'}" style="padding:6px 11px; font-size:.8rem;">
+                            ${labelBoutonRole}
+                        </button>` : '';
+
                     actionsHTML = `
                         <div class="card-actions">
-                            <button type="button" class="btn-chip ${classeBouton}" data-changer-role="${echapper(c.uid)}" data-nouveau-role="${nouveauRole}" title="${estAdmin ? 'Rétrograder en utilisateur' : 'Promouvoir en administrateur'}" style="padding:6px 11px; font-size:.8rem;">
-                                ${labelBoutonRole}
-                            </button>
+                            ${boutonRoleHTML}
                             <button type="button" class="btn-supprimer" data-uid="${echapper(c.uid)}" title="Supprimer ce compte" aria-label="Supprimer ce compte">🗑️</button>
                         </div>`;
                 }
@@ -151,9 +155,13 @@
         document.getElementById('recherche').addEventListener('input', afficher);
 
         conteneur.addEventListener('click', async (e) => {
-            // 1. Changement de rôle (Utilisateur <-> Administrateur)
+            // 1. Changement de rôle (Utilisateur <-> Administrateur - réservé au Super Admin)
             const btnRole = e.target.closest('[data-changer-role]');
             if (btnRole) {
+                if (!suisSuperAdmin) {
+                    toast("Seul le Super Administrateur peut modifier le rôle des comptes.", 'error');
+                    return;
+                }
                 const uid = btnRole.dataset.changerRole;
                 const nouveauRole = btnRole.dataset.nouveauRole;
                 const compte = comptes.find(c => c.uid === uid);

@@ -33,11 +33,12 @@ service cloud.firestore {
         (request.resource.data.role == "utilisateur" || estSuperAdmin())
       );
 
-      // Mise à jour : l'admin/super admin peut changer les rôles (Utilisateur <-> Admin)
-      allow update: if estAdmin() || (
+      // Mise à jour : SEUL le Super Admin peut modifier le rôle d'un compte (Utilisateur <-> Admin)
+      // Les admins classiques ou les utilisateurs ne peuvent modifier leur profil que si le rôle reste IDENTIQUE
+      allow update: if estSuperAdmin() || (
         estConnecte() &&
-        request.auth.uid == userId &&
-        request.resource.data.role == resource.data.role
+        request.resource.data.role == resource.data.role &&
+        (estAdmin() || request.auth.uid == userId)
       );
 
       // Suppression : réservée à l'admin (ou à l'utilisateur qui purge son propre compte)

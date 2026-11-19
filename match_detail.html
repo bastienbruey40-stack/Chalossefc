@@ -105,6 +105,7 @@
         let estAdmin = false;
         let matchDataCourant = null;
         let notesDocsDuMatch = [];
+        let notesDocsParVotant = {};
         let notesExistantes = {};
         let modeNoteActif = 'moyenne';
         let donneesCompoCourante = null;
@@ -185,6 +186,7 @@
                 const votantsUniques = new Set();
                 notesExistantes = {};
                 notesDocsDuMatch = [];
+                notesDocsParVotant = {};
 
                 compoIds.forEach(id => {
                     if (joueursMap[id]) statsMatch[id] = { nom: joueursMap[id].nomComplet, total: 0, nb: 0 };
@@ -197,7 +199,11 @@
                         notesDocsDuMatch.push(nDoc.id);
                         const jId = parts[1] || noteData.joueurId || noteData.joueur_id;
                         const voterId = parts[2] || noteData.voterId || noteData.votant_id;
-                        if (voterId) votantsUniques.add(voterId);
+                        if (voterId) {
+                            votantsUniques.add(voterId);
+                            if (!notesDocsParVotant[voterId]) notesDocsParVotant[voterId] = [];
+                            notesDocsParVotant[voterId].push(nDoc.id);
+                        }
                         if (voterId === utilisateurActuel.uid) notesExistantes[jId] = parseFloat(noteData.note);
                         if (statsMatch[jId]) {
                             statsMatch[jId].total += parseFloat(noteData.note);
@@ -252,7 +258,9 @@
                         if (listeVotants.length === 0) {
                             conteneurVotants.innerHTML = `<p class="muted" style="margin:0; font-size:.84rem;">Aucun vote enregistré pour l'instant sur ce match.</p>`;
                         } else {
-                            conteneurVotants.innerHTML = listeVotants.map(v => `
+                            conteneurVotants.innerHTML = listeVotants.map(v => {
+                                const nbNotes = (notesDocsParVotant[v.id] || []).length;
+                                return `
                                 <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 10px; background:var(--surface); border:1px solid var(--border); border-radius:10px;">
                                     <div style="display:flex; align-items:center; gap:8px; min-width:0;">
                                         <span class="avatar" style="width:28px; height:28px; font-size:.72rem; flex-shrink:0;">${echapper(initiales(v.prenom, v.nomFamille))}</span>
@@ -261,9 +269,12 @@
                                             ${v.email ? `<small class="muted" style="font-size:.74rem;">✉️ ${echapper(v.email)}</small>` : ''}
                                         </div>
                                     </div>
-                                    <span class="tag" style="margin:0; flex-shrink:0; background:rgba(34,197,94,.12); color:var(--vert); border-color:var(--vert); font-weight:700;">✓ A voté</span>
-                                </div>
-                            `).join('');
+                                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                                        <span class="tag" style="margin:0; background:rgba(34,197,94,.12); color:var(--vert); border-color:var(--vert); font-weight:700;">✓ A voté${nbNotes > 0 ? ` (${nbNotes})` : ''}</span>
+                                        <button type="button" class="btn-supprimer" data-suppr-voter-id="${echapper(v.id)}" data-nom-votant="${echapper(v.nomComplet)}" title="Supprimer tous les votes de ${echapper(v.nomComplet)} sur ce match" aria-label="Supprimer les votes de ce membre" style="width:30px; height:30px; font-size:.85rem;">🗑️</button>
+                                    </div>
+                                </div>`;
+                            }).join('');
                         }
                     }
                 }
@@ -453,6 +464,35 @@
             if (liste) liste.classList.remove('hidden');
             if (btn) btn.textContent = '✕ Masquer la liste';
             document.getElementById('admin-votants')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+
+        // Bouton admin pour supprimer les votes d'un votant particulier sur ce match
+        document.getElementById('conteneur-chips-votants')?.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-suppr-voter-id]');
+            if (!btn) return;
+            const voterId = btn.dataset.supprVoterId;
+            const nomVotant = btn.dataset.nomVotant || 'ce votant';
+            const docsASupprimer = notesDocsParVotant[voterId] || [];
+
+            if (docsASupprimer.length === 0) {
+                toast("Aucun vote trouvé pour ce membre sur ce match.", 'info');
+                return;
+            }
+
+            const ok = await confirmer(
+                `Supprimer tous les votes de ${nomVotant} (${docsASupprimer.length} note(s)) sur ce match ? Les notes moyennes de l'équipe seront immédiatement recalculées sans ses votes.`,
+                { titre: `Supprimer les votes de ${nomVotant} ?`, ok: 'Supprimer ses votes', danger: true }
+            );
+            if (!ok) return;
+
+            try {
+                await Promise.all(docsASupprimer.map(id => deleteDoc(doc(db, "notes", id))));
+                toast(`Les votes de ${nomVotant} ont été supprimés.`);
+                await chargerDetailsMatch();
+            } catch (err) {
+                console.error("Erreur de suppression des votes :", err);
+                toast("Erreur lors de la suppression : " + err.message, 'error');
+            }
         });
 
         // Clic sur un joueur du terrain ou du banc -> ouvre la fiche résumé joueur
