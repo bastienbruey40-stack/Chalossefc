@@ -43,7 +43,10 @@
             <div class="card" style="margin-top: 16px;">
                 <div class="toolbar-row" style="margin-bottom: 4px;">
                     <label style="margin: 0;">3. Dispositif tactique</label>
-                    <button type="button" class="btn-chip" id="btn-vider-compo" style="font-size:.8rem; padding:6px 11px;">🗑️ Vider le terrain</button>
+                    <div class="toolbar-actions">
+                        <button type="button" class="btn-chip primary" id="btn-importer-noms" style="font-size:.8rem; padding:6px 11px;">📋 Importer par noms</button>
+                        <button type="button" class="btn-chip" id="btn-vider-compo" style="font-size:.8rem; padding:6px 11px;">🗑️ Vider le terrain</button>
+                    </div>
                 </div>
                 <div class="formation-pills" id="liste-dispositifs"></div>
                 <p class="muted" id="desc-dispositif" style="font-size: .82rem; margin: 8px 0 0;"></p>
@@ -92,6 +95,7 @@
         import { toast, flash, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
+        import { resoudreOuCreerJoueursParNom } from "./js/fff_import.js";
 
         const matchUrlParam = new URLSearchParams(window.location.search).get('match');
 
@@ -615,6 +619,63 @@
             titulaires = {};
             remplacants = [];
             rafraichirVueTactique();
+        });
+
+        // Importer une composition à partir d'une liste de noms (utilise le joueur s'il existe déjà, sinon le crée automatiquement)
+        document.getElementById('btn-importer-noms').addEventListener('click', () => {
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+            ouvrirModal((boite, fermer) => {
+                boite.innerHTML = `
+                    <h3 class="modal-title">📋 Importer une composition par noms</h3>
+                    <p class="modal-text">
+                        Collez les noms des joueurs (1 par ligne ou séparés par des virgules).<br>
+                        <small class="muted">Les 11 premiers seront placés titulaires en <strong>${echapper(dispositifActif)}</strong> (du Gardien aux Attaquants) et les suivants sur le banc. Si un joueur existe déjà, il est réutilisé ; sinon il est créé automatiquement.</small>
+                    </p>
+                    <textarea id="txt-noms-compo" rows="8" style="margin-top:10px; font-size:.9rem;" placeholder="1. Prénom Nom (Gardien)&#10;2. Prénom Nom (Défenseur)&#10;...&#10;12. Prénom Nom (Remplaçant)"></textarea>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-noms">Annuler</button>
+                        <button type="button" class="btn-modal btn-modal-ok" id="btn-valider-noms">Placer les joueurs</button>
+                    </div>
+                `;
+
+                boite.querySelector('#btn-annuler-noms').onclick = () => fermer(false);
+                boite.querySelector('#btn-valider-noms').onclick = async () => {
+                    const brut = boite.querySelector('#txt-noms-compo').value;
+                    const lignes = brut
+                        .split(/[\n,;]+/)
+                        .map(l => l.replace(/^\s*\d+[\s.)-]*\s*/, '').replace(/\(.*?\)/g, '').trim())
+                        .filter(Boolean);
+
+                    if (lignes.length === 0) {
+                        toast("Saisissez au moins un nom de joueur.", 'error');
+                        return;
+                    }
+
+                    const btnOk = boite.querySelector('#btn-valider-noms');
+                    chargement(btnOk, true, 'Association des joueurs…');
+                    try {
+                        const listeNomsPostes = lignes.map((nom, idx) => ({
+                            nom,
+                            poste: idx < 11 ? (config.postes[idx]?.categorie || 'Milieu') : 'Milieu'
+                        }));
+
+                        const ids = await resoudreOuCreerJoueursParNom(listeNomsPostes);
+                        await initialiserPage();
+
+                        titulaires = {};
+                        ids.slice(0, 11).forEach((id, idx) => { titulaires[idx] = id; });
+                        remplacants = ids.slice(11);
+
+                        rafraichirVueTactique();
+                        toast(`${ids.length} joueur(s) placés sur la feuille de match !`);
+                        fermer(true);
+                    } catch (err) {
+                        console.error(err);
+                        toast("Erreur : " + err.message, 'error');
+                        chargement(btnOk, false);
+                    }
+                };
+            });
         });
 
         // Sauvegarde dans Firestore (compo_tactique + tableau compo plat pour compatibilité stats/notes)
