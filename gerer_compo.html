@@ -15,8 +15,8 @@
 
     <main class="container">
         <header class="page-header">
-            <h1><img src="chalosse.webp" alt="" class="logo-header"> Compositions</h1>
-            <p>Choisissez l'équipe puis sélectionnez un match pour composer le groupe.</p>
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> Compositions &amp; Tactique</h1>
+            <p>Choisissez votre dispositif, placez vos 11 titulaires sur le terrain et sélectionnez les remplaçants.</p>
         </header>
 
         <div class="card">
@@ -38,22 +38,49 @@
             <div id="picker-match"></div>
         </div>
 
-        <div id="zone-joueurs" class="hidden">
-            <div class="toolbar-row" style="margin-top: 24px;">
-                <h2 class="titre-section" style="margin: 0;">Joueurs <span class="count">triés par apparitions</span></h2>
-                <div class="toolbar-actions">
-                    <button type="button" class="btn-chip" id="btn-vider-compo">Tout décocher</button>
+        <div id="zone-tactique" class="hidden">
+            <!-- Choix du dispositif -->
+            <div class="card" style="margin-top: 16px;">
+                <div class="toolbar-row" style="margin-bottom: 4px;">
+                    <label style="margin: 0;">3. Dispositif tactique</label>
+                    <button type="button" class="btn-chip" id="btn-vider-compo" style="font-size:.8rem; padding:6px 11px;">🗑️ Vider le terrain</button>
                 </div>
+                <div class="formation-pills" id="liste-dispositifs"></div>
+                <p class="muted" id="desc-dispositif" style="font-size: .82rem; margin: 8px 0 0;"></p>
             </div>
 
-            <div class="search">
-                <input type="search" id="recherche" placeholder="Filtrer les joueurs…" autocomplete="off">
-            </div>
-            <div class="compo-grid" id="liste-joueurs"></div>
+            <!-- Terrain de foot interactif -->
+            <p class="muted" style="text-align:center; font-size:.84rem; margin: 16px 0 10px;">
+                👆 Touchez un poste sur le terrain pour placer ou changer un joueur
+            </p>
+            <div id="conteneur-terrain"></div>
 
-            <div class="sticky-actions">
-                <span class="sticky-info"><strong id="nb-selection">0</strong> sélectionné(s)</span>
-                <button class="btn-valider" id="btn-sauvegarder">💾 Valider la composition</button>
+            <!-- Banc des remplaçants -->
+            <div class="card bench-card">
+                <div class="toolbar-row" style="margin-bottom: 4px;">
+                    <div>
+                        <strong style="font-size: 1rem;">🪑 Banc des remplaçants</strong>
+                        <span class="count" id="nb-remplacants" style="margin-left: 8px;">0</span>
+                    </div>
+                    <button type="button" class="btn-chip primary" id="btn-ajouter-remplacant" style="padding: 8px 12px; font-size: .84rem;">➕ Ajouter un remplaçant</button>
+                </div>
+                <div id="liste-remplacants" class="bench-grid"></div>
+            </div>
+
+            <!-- Récapitulatif & ajout rapide depuis l'effectif -->
+            <div style="max-width: 580px; margin: 22px auto 0;">
+                <h2 class="titre-section" style="margin-top: 0;">Effectif disponible <span class="count">ajout rapide</span></h2>
+                <div class="search">
+                    <input type="search" id="recherche" placeholder="Rechercher un joueur ou un poste…" autocomplete="off">
+                </div>
+                <div class="card" id="liste-joueurs" style="padding: 10px 16px;"></div>
+            </div>
+
+            <div class="sticky-actions" style="max-width: 580px; margin-left: auto; margin-right: auto;">
+                <span class="sticky-info">
+                    <strong id="nb-titulaires-bar">0</strong>/11 tit. · <strong id="nb-remp-bar">0</strong> remp.
+                </span>
+                <button class="btn-valider" id="btn-sauvegarder">💾 Enregistrer la compo</button>
             </div>
         </div>
     </main>
@@ -62,19 +89,41 @@
         import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, flash, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { toast, flash, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
+        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
+
+        const matchUrlParam = new URLSearchParams(window.location.search).get('match');
 
         let equipeActive = 'premiere';
         let matchActifId = null;
         let listeTousLesJoueurs = [];
+        let joueursMap = {};
         let tousLesMatchs = [];
         let compteursApparitions = {};
 
+        // État tactique du match actif
+        let dispositifActif = "4-3-3";
+        let titulaires = {};   // { "0": joueurId, ... "10": joueurId }
+        let remplacants = [];  // [joueurId, ...]
+
         const selectMatch = creerSelectCustom('picker-match', {
-            placeholder: 'Sélectionner un match de la Première…',
+            placeholder: 'Sélectionner un match…',
             iconePlaceholder: '⚽',
             onChange: (id) => chargerCompoDuMatch(id)
+        });
+
+        // Génère les boutons de choix de dispositif (4-3-3, 4-4-2, etc.)
+        const conteneurDispositifs = document.getElementById('liste-dispositifs');
+        conteneurDispositifs.innerHTML = Object.keys(DISPOSITIFS).map(code =>
+            `<button type="button" class="formation-pill" data-disp="${echapper(code)}">${echapper(code)}</button>`
+        ).join('');
+
+        conteneurDispositifs.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-disp]');
+            if (!btn) return;
+            dispositifActif = btn.dataset.disp;
+            rafraichirVueTactique();
         });
 
         onAuthStateChanged(auth, async (user) => {
@@ -91,19 +140,28 @@
         async function initialiserPage() {
             try {
                 listeTousLesJoueurs = [];
+                joueursMap = {};
                 compteursApparitions = {};
 
-                // 1. Uniquement les JOUEURS ou ADMINS
+                // 1. Récupérer les joueurs et admins
                 const usersSnap = await getDocs(collection(db, "utilisateurs"));
                 usersSnap.forEach(u => {
                     const data = u.data();
                     if (data.prenom && (data.role === "joueur" || data.role === "admin")) {
-                        listeTousLesJoueurs.push({ id: u.id, nom: `${data.prenom} ${data.nom}`, poste: data.poste || '' });
+                        const j = {
+                            id: u.id,
+                            prenom: data.prenom,
+                            nom: data.nom || '',
+                            nomComplet: `${data.prenom} ${data.nom || ''}`.trim(),
+                            poste: data.poste || 'Milieu'
+                        };
+                        listeTousLesJoueurs.push(j);
+                        joueursMap[u.id] = j;
                         compteursApparitions[u.id] = { premiere: 0, reserve: 0 };
                     }
                 });
 
-                // 2. Matchs + calcul des anciennes compos
+                // 2. Récupérer les matchs
                 const matchsSnap = await getDocs(collection(db, "matchs"));
                 tousLesMatchs = [];
                 matchsSnap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
@@ -124,6 +182,20 @@
                 document.getElementById('sub-nb-premiere').textContent = `${nbP} match${nbP > 1 ? 's' : ''}`;
                 document.getElementById('sub-nb-reserve').textContent = `${nbR} match${nbR > 1 ? 's' : ''}`;
 
+                // Si un match est passé dans l'URL (?match=...), basculer sur son équipe et le sélectionner
+                if (matchUrlParam && !matchActifId) {
+                    const mCible = tousLesMatchs.find(m => m.id === matchUrlParam);
+                    if (mCible) {
+                        equipeActive = mCible.data.equipe_type === 'reserve' ? 'reserve' : 'premiere';
+                        document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b =>
+                            b.classList.toggle('active', b.dataset.equipe === equipeActive)
+                        );
+                        rafraichirMenuMatchs(false);
+                        selectMatch.setValue(matchUrlParam, true);
+                        return;
+                    }
+                }
+
                 rafraichirMenuMatchs(true);
             } catch (error) {
                 console.error("Erreur de chargement :", error);
@@ -137,11 +209,12 @@
             );
             const options = matchsEquipe.map(({ id, data }) => {
                 const nb = Array.isArray(data.compo) ? data.compo.length : 0;
+                const disp = data.compo_tactique?.dispositif ? ` · ${data.compo_tactique.dispositif}` : '';
                 return {
                     value: id,
                     dot: equipeActive,
                     label: `Contre ${data.adversaire || 'Adversaire'}`,
-                    sub: formaterDate(data.date),
+                    sub: `${formaterDate(data.date)}${disp}`,
                     badge: nb > 0 ? `${nb} joueur${nb > 1 ? 's' : ''}` : 'À faire',
                     badgeClass: nb > 0 ? 'ok' : 'warn'
                 };
@@ -149,11 +222,10 @@
             selectMatch.setOptions(options, garderSelection);
             if (!garderSelection) {
                 matchActifId = null;
-                document.getElementById('zone-joueurs').classList.add('hidden');
+                document.getElementById('zone-tactique').classList.add('hidden');
             }
         }
 
-        // Bascule Équipe Première / Réserve
         document.querySelectorAll('#choix-equipe [data-equipe]').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('#choix-equipe [data-equipe]').forEach(b => b.classList.toggle('active', b === btn));
@@ -164,64 +236,407 @@
 
         async function chargerCompoDuMatch(idMatch) {
             matchActifId = idMatch;
-            const zone = document.getElementById('zone-joueurs');
+            const zone = document.getElementById('zone-tactique');
             if (!matchActifId) { zone.classList.add('hidden'); return; }
 
-            listeTousLesJoueurs.sort((a, b) => {
-                const nbA = compteursApparitions[a.id]?.[equipeActive] || 0;
-                const nbB = compteursApparitions[b.id]?.[equipeActive] || 0;
-                if (nbB !== nbA) return nbB - nbA;
-                return a.nom.localeCompare(b.nom);
-            });
-
             const matchDoc = await getDoc(doc(db, "matchs", matchActifId));
-            const compoEnregistree = (matchDoc.exists() && matchDoc.data().compo) || [];
+            const matchData = matchDoc.exists() ? matchDoc.data() : {};
+            const etat = extraireCompoTactique(matchData);
 
-            document.getElementById('liste-joueurs').innerHTML = listeTousLesJoueurs.map(joueur => {
-                const coche = compoEnregistree.includes(joueur.id) ? "checked" : "";
-                const nb = compteursApparitions[joueur.id]?.[equipeActive] || 0;
-                const badge = nb > 0 ? `<span class="stats-badge">${nb} match${nb > 1 ? 's' : ''}</span>` : "";
-                return `
-                    <label class="joueur-ligne" data-nom="${echapper(joueur.nom.toLowerCase())}">
-                        <div>
-                            <span class="joueur-nom">${echapper(joueur.nom)}</span>
-                            ${badge}
-                        </div>
-                        <input type="checkbox" class="checkbox-compo" value="${joueur.id}" ${coche}>
-                    </label>`;
-            }).join('');
+            dispositifActif = etat.dispositif;
+            titulaires = { ...etat.titulaires };
+            remplacants = [...etat.remplacants];
 
             document.getElementById('recherche').value = '';
-            majCompteur();
+            rafraichirVueTactique();
             zone.classList.remove('hidden');
         }
 
-        function majCompteur() {
-            document.getElementById('nb-selection').textContent = document.querySelectorAll('.checkbox-compo:checked').length;
+        function trouverSlotDuJoueur(joueurId) {
+            for (let i = 0; i < 11; i++) {
+                if (titulaires[i] === joueurId) return i;
+            }
+            return -1;
         }
 
-        document.getElementById('btn-vider-compo').addEventListener('click', () => {
-            document.querySelectorAll('.checkbox-compo:checked').forEach(c => { c.checked = false; });
-            majCompteur();
-        });
+        function placerTitulaire(slotIndex, joueurId) {
+            // Si le joueur était déjà sur un autre poste du terrain, on échange les 2 joueurs
+            const ancienSlotDuJoueur = trouverSlotDuJoueur(joueurId);
+            const joueurActuelSurCible = titulaires[slotIndex];
 
-        document.getElementById('liste-joueurs').addEventListener('change', majCompteur);
-        document.getElementById('recherche').addEventListener('input', (e) => {
-            const q = e.target.value.trim().toLowerCase();
-            document.querySelectorAll('#liste-joueurs .joueur-ligne').forEach(l => {
-                l.classList.toggle('hidden', !l.dataset.nom.includes(q));
+            if (ancienSlotDuJoueur !== -1 && ancienSlotDuJoueur !== slotIndex) {
+                if (joueurActuelSurCible) titulaires[ancienSlotDuJoueur] = joueurActuelSurCible;
+                else delete titulaires[ancienSlotDuJoueur];
+            }
+            // S'il était sur le banc, on l'en retire
+            remplacants = remplacants.filter(id => id !== joueurId);
+            titulaires[slotIndex] = joueurId;
+            rafraichirVueTactique();
+        }
+
+        function ajouterAuBanc(joueurId) {
+            const slot = trouverSlotDuJoueur(joueurId);
+            if (slot !== -1) delete titulaires[slot];
+            if (!remplacants.includes(joueurId)) remplacants.push(joueurId);
+            rafraichirVueTactique();
+        }
+
+        function retirerJoueur(joueurId) {
+            const slot = trouverSlotDuJoueur(joueurId);
+            if (slot !== -1) delete titulaires[slot];
+            remplacants = remplacants.filter(id => id !== joueurId);
+            rafraichirVueTactique();
+        }
+
+        function rafraichirVueTactique() {
+            // 1. Pilules dispositif
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+            document.querySelectorAll('#liste-dispositifs [data-disp]').forEach(b =>
+                b.classList.toggle('active', b.dataset.disp === dispositifActif)
+            );
+            document.getElementById('desc-dispositif').textContent = config.description;
+
+            // 2. Terrain de football
+            const conteneurTerrain = document.getElementById('conteneur-terrain');
+            conteneurTerrain.innerHTML = rendreTerrainHTML({
+                dispositif: dispositifActif,
+                titulaires,
+                joueursMap,
+                interactif: true
+            });
+
+            // 3. Banc des remplaçants
+            document.getElementById('nb-remplacants').textContent = remplacants.length;
+            const zoneBanc = document.getElementById('liste-remplacants');
+            const rempValides = remplacants.filter(id => joueursMap[id]);
+            if (rempValides.length === 0) {
+                zoneBanc.innerHTML = `<p class="muted" style="font-size:.85rem; margin:4px 0;">Aucun remplaçant sélectionné. Cliquez sur « ➕ Ajouter un remplaçant ».</p>`;
+            } else {
+                zoneBanc.innerHTML = rempValides.map(id => {
+                    const j = joueursMap[id];
+                    return `
+                        <div class="bench-chip">
+                            <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
+                            <span>${echapper(j.nomComplet)} <small class="muted">(${echapper(j.poste)})</small></span>
+                            <button type="button" class="bench-chip-btn" data-retirer-remp="${echapper(id)}" title="Retirer du banc">✕</button>
+                        </div>`;
+                }).join('');
+            }
+
+            // 4. Liste de l'effectif
+            rendreListeEffectif();
+
+            // 5. Barre flottante en bas
+            document.getElementById('nb-titulaires-bar').textContent = Object.keys(titulaires).length;
+            document.getElementById('nb-remp-bar').textContent = rempValides.length;
+        }
+
+        function rendreListeEffectif() {
+            const q = document.getElementById('recherche').value.trim().toLowerCase();
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+
+            const joueursTries = [...listeTousLesJoueurs].sort((a, b) => {
+                const nbA = compteursApparitions[a.id]?.[equipeActive] || 0;
+                const nbB = compteursApparitions[b.id]?.[equipeActive] || 0;
+                if (nbB !== nbA) return nbB - nbA;
+                return a.nomComplet.localeCompare(b.nomComplet);
+            }).filter(j => !q || `${j.nomComplet} ${j.poste}`.toLowerCase().includes(q));
+
+            if (joueursTries.length === 0) {
+                document.getElementById('liste-joueurs').innerHTML = `<p class="muted" style="text-align:center;">Aucun joueur trouvé.</p>`;
+                return;
+            }
+
+            document.getElementById('liste-joueurs').innerHTML = joueursTries.map(j => {
+                const slot = trouverSlotDuJoueur(j.id);
+                const estRemp = remplacants.includes(j.id);
+                const nbMatchs = compteursApparitions[j.id]?.[equipeActive] || 0;
+
+                let statutBadge = `<span class="tag">${echapper(j.poste)}</span>`;
+                if (slot !== -1) {
+                    const codePoste = config.postes[slot]?.code || 'Tit.';
+                    statutBadge = `<span class="tag" style="background:var(--jaune-doux); color:var(--texte); border-color:var(--jaune);">⚽ Titulaire (${echapper(codePoste)})</span>`;
+                } else if (estRemp) {
+                    statutBadge = `<span class="tag user">🪑 Remplaçant</span>`;
+                }
+
+                const actions = (slot !== -1 || estRemp)
+                    ? `<button type="button" class="btn-chip" data-action="retirer" data-id="${j.id}" style="padding:6px 10px; font-size:.78rem; color:var(--rouge);">✕ Retirer</button>`
+                    : `<div class="card-actions">
+                        <button type="button" class="btn-chip" data-action="auto-titulaire" data-id="${j.id}" style="padding:6px 10px; font-size:.78rem;">+ Terrain</button>
+                        <button type="button" class="btn-chip" data-action="banc" data-id="${j.id}" style="padding:6px 10px; font-size:.78rem;">+ Banc</button>
+                       </div>`;
+
+                return `
+                    <div class="joueur-ligne">
+                        <div>
+                            <span class="joueur-nom">${echapper(j.nomComplet)}</span>
+                            ${nbMatchs > 0 ? `<span class="stats-badge">(${nbMatchs} m.)</span>` : ''}
+                            <br>${statutBadge}
+                        </div>
+                        ${actions}
+                    </div>`;
+            }).join('');
+        }
+
+        // Modale de choix d'un joueur quand on clique sur un poste du terrain
+        function ouvrirChoixJoueurPourPoste(slotIndex) {
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+            const poste = config.postes[slotIndex];
+            const joueurActuelId = titulaires[slotIndex];
+            const joueurActuel = joueurActuelId ? joueursMap[joueurActuelId] : null;
+
+            ouvrirModal((boite, fermer) => {
+                // Tri intelligent : joueurs du poste recommandé en premier, puis non sélectionnés, puis par apparitions
+                const trierPourCePoste = (q = '') => {
+                    const filtre = q.trim().toLowerCase();
+                    return [...listeTousLesJoueurs]
+                        .filter(j => j.id !== joueurActuelId && (!filtre || `${j.nomComplet} ${j.poste}`.toLowerCase().includes(filtre)))
+                        .sort((a, b) => {
+                            const libreA = trouverSlotDuJoueur(a.id) === -1 ? 1 : 0;
+                            const libreB = trouverSlotDuJoueur(b.id) === -1 ? 1 : 0;
+                            if (libreB !== libreA) return libreB - libreA;
+                            const bonPosteA = (a.poste || '').toLowerCase() === poste.categorie.toLowerCase() ? 1 : 0;
+                            const bonPosteB = (b.poste || '').toLowerCase() === poste.categorie.toLowerCase() ? 1 : 0;
+                            if (bonPosteB !== bonPosteA) return bonPosteB - bonPosteA;
+                            return (compteursApparitions[b.id]?.[equipeActive] || 0) - (compteursApparitions[a.id]?.[equipeActive] || 0);
+                        });
+                };
+
+                const actionsActuel = joueurActuel ? `
+                    <div class="account-info-item" style="margin: 10px 0 12px;">
+                        <div>
+                            <small>Actuellement à ce poste</small>
+                            <strong>${echapper(joueurActuel.nomComplet)}</strong>
+                        </div>
+                        <div class="card-actions">
+                            <button type="button" class="btn-chip" id="btn-vers-banc" style="padding:6px 10px; font-size:.78rem;">🪑 Banc</button>
+                            <button type="button" class="btn-chip" id="btn-vider-poste" style="padding:6px 10px; font-size:.78rem; color:var(--rouge);">✕ Retirer</button>
+                        </div>
+                    </div>` : '';
+
+                boite.innerHTML = `
+                    <h3 class="modal-title">⚽ ${echapper(poste.label)} (${echapper(poste.code)})</h3>
+                    <p class="modal-text">Poste recommandé : <strong>${echapper(poste.categorie)}</strong></p>
+                    ${actionsActuel}
+                    <div class="search" style="margin: 10px 0;">
+                        <input type="search" id="search-modal-joueur" placeholder="Rechercher un joueur…" autocomplete="off">
+                    </div>
+                    <div id="liste-modal-joueurs" class="cselect-list" style="max-height: 280px; border: 1px solid var(--border); border-radius: 12px; padding: 6px;"></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-cancel" id="btn-fermer-slot">Fermer</button>
+                    </div>
+                `;
+
+                const listeEl = boite.querySelector('#liste-modal-joueurs');
+                const inputSearch = boite.querySelector('#search-modal-joueur');
+
+                function afficherOptions(q = '') {
+                    const candidats = trierPourCePoste(q);
+                    if (candidats.length === 0) {
+                        listeEl.innerHTML = `<div class="cselect-empty">Aucun joueur trouvé</div>`;
+                        return;
+                    }
+                    listeEl.innerHTML = candidats.map(j => {
+                        const slotExist = trouverSlotDuJoueur(j.id);
+                        const estRemp = remplacants.includes(j.id);
+                        const recommande = (j.poste || '').toLowerCase() === poste.categorie.toLowerCase();
+                        let badge = `<span class="cselect-badge ${recommande ? 'ok' : ''}">${echapper(j.poste)}</span>`;
+                        if (slotExist !== -1) {
+                            badge = `<span class="cselect-badge warn">⇄ Échanger (${echapper(config.postes[slotExist].code)})</span>`;
+                        } else if (estRemp) {
+                            badge = `<span class="cselect-badge">🪑 Sur le banc</span>`;
+                        }
+                        return `
+                            <button type="button" class="cselect-option" data-choix-id="${echapper(j.id)}">
+                                <span class="avatar" style="width:32px; height:32px; font-size:.76rem;">${echapper(initiales(j.prenom, j.nom))}</span>
+                                <span class="cselect-texts">
+                                    <span class="cselect-title">${echapper(j.nomComplet)}</span>
+                                    <span class="cselect-sub">${echapper(j.poste)} · ${compteursApparitions[j.id]?.[equipeActive] || 0} match(s)</span>
+                                </span>
+                                ${badge}
+                            </button>`;
+                    }).join('');
+                }
+
+                afficherOptions();
+                inputSearch.addEventListener('input', () => afficherOptions(inputSearch.value));
+
+                listeEl.addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-choix-id]');
+                    if (!btn) return;
+                    placerTitulaire(slotIndex, btn.dataset.choixId);
+                    fermer(true);
+                });
+
+                boite.querySelector('#btn-fermer-slot').onclick = () => fermer(false);
+                if (joueurActuel) {
+                    boite.querySelector('#btn-vider-poste').onclick = () => {
+                        delete titulaires[slotIndex];
+                        rafraichirVueTactique();
+                        fermer(true);
+                    };
+                    boite.querySelector('#btn-vers-banc').onclick = () => {
+                        ajouterAuBanc(joueurActuelId);
+                        fermer(true);
+                    };
+                }
+            });
+        }
+
+        // Modale pour ajouter un ou plusieurs remplaçants
+        document.getElementById('btn-ajouter-remplacant').addEventListener('click', () => {
+            ouvrirModal((boite, fermer) => {
+                boite.innerHTML = `
+                    <h3 class="modal-title">🪑 Ajouter des remplaçants</h3>
+                    <p class="modal-text">Touchez les joueurs à placer sur le banc des remplaçants.</p>
+                    <div class="search" style="margin: 10px 0;">
+                        <input type="search" id="search-modal-banc" placeholder="Rechercher un joueur…" autocomplete="off">
+                    </div>
+                    <div id="liste-modal-banc" class="cselect-list" style="max-height: 290px; border: 1px solid var(--border); border-radius: 12px; padding: 6px;"></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-ok" id="btn-fermer-banc">Terminé</button>
+                    </div>
+                `;
+
+                const listeEl = boite.querySelector('#liste-modal-banc');
+                const inputSearch = boite.querySelector('#search-modal-banc');
+
+                function afficherCandidats(q = '') {
+                    const filtre = q.trim().toLowerCase();
+                    const candidats = listeTousLesJoueurs.filter(j =>
+                        trouverSlotDuJoueur(j.id) === -1 &&
+                        (!filtre || `${j.nomComplet} ${j.poste}`.toLowerCase().includes(filtre))
+                    );
+                    if (candidats.length === 0) {
+                        listeEl.innerHTML = `<div class="cselect-empty">Aucun joueur disponible</div>`;
+                        return;
+                    }
+                    listeEl.innerHTML = candidats.map(j => {
+                        const actif = remplacants.includes(j.id);
+                        return `
+                            <button type="button" class="cselect-option${actif ? ' active' : ''}" data-remp-id="${echapper(j.id)}">
+                                <span class="avatar" style="width:32px; height:32px; font-size:.76rem;">${echapper(initiales(j.prenom, j.nom))}</span>
+                                <span class="cselect-texts">
+                                    <span class="cselect-title">${echapper(j.nomComplet)}</span>
+                                    <span class="cselect-sub">${echapper(j.poste)}</span>
+                                </span>
+                                <span class="cselect-check">✓</span>
+                            </button>`;
+                    }).join('');
+                }
+
+                afficherCandidats();
+                inputSearch.addEventListener('input', () => afficherCandidats(inputSearch.value));
+
+                listeEl.addEventListener('click', (e) => {
+                    const btn = e.target.closest('[data-remp-id]');
+                    if (!btn) return;
+                    const id = btn.dataset.rempId;
+                    if (remplacants.includes(id)) {
+                        remplacants = remplacants.filter(x => x !== id);
+                    } else {
+                        remplacants.push(id);
+                    }
+                    afficherCandidats(inputSearch.value);
+                    rafraichirVueTactique();
+                });
+
+                boite.querySelector('#btn-fermer-banc').onclick = () => fermer(true);
             });
         });
 
+        // Clic ou Glisser-Déposer sur un poste du terrain
+        let slotDragSource = null;
+        const conteneurTerrain = document.getElementById('conteneur-terrain');
+
+        conteneurTerrain.addEventListener('click', (e) => {
+            const node = e.target.closest('.pitch-node');
+            if (!node) return;
+            ouvrirChoixJoueurPourPoste(parseInt(node.dataset.slot));
+        });
+
+        conteneurTerrain.addEventListener('dragstart', (e) => {
+            const node = e.target.closest('.pitch-node.filled');
+            if (!node) return;
+            slotDragSource = parseInt(node.dataset.slot);
+        });
+        conteneurTerrain.addEventListener('dragover', (e) => {
+            if (e.target.closest('.pitch-node')) e.preventDefault();
+        });
+        conteneurTerrain.addEventListener('drop', (e) => {
+            const cible = e.target.closest('.pitch-node');
+            if (!cible || slotDragSource === null) return;
+            e.preventDefault();
+            const slotCible = parseInt(cible.dataset.slot);
+            const idSource = titulaires[slotDragSource];
+            if (idSource && slotCible !== slotDragSource) {
+                placerTitulaire(slotCible, idSource);
+            }
+            slotDragSource = null;
+        });
+
+        // Retirer un remplaçant depuis sa puce sur le banc
+        document.getElementById('liste-remplacants').addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-retirer-remp]');
+            if (!btn) return;
+            retirerJoueur(btn.dataset.retirerRemp);
+        });
+
+        // Actions rapides depuis la liste de l'effectif en bas
+        document.getElementById('liste-joueurs').addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const id = btn.dataset.id;
+            const action = btn.dataset.action;
+
+            if (action === 'retirer') {
+                retirerJoueur(id);
+            } else if (action === 'banc') {
+                ajouterAuBanc(id);
+            } else if (action === 'auto-titulaire') {
+                const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+                const joueur = joueursMap[id];
+                // Cherche d'abord un poste libre correspondant à sa catégorie, sinon n'importe quel poste libre
+                let slotLibre = config.postes.findIndex((p, idx) => !titulaires[idx] && p.categorie.toLowerCase() === (joueur?.poste || '').toLowerCase());
+                if (slotLibre === -1) slotLibre = config.postes.findIndex((_, idx) => !titulaires[idx]);
+
+                if (slotLibre === -1) {
+                    toast("Les 11 postes titulaires sont déjà occupés ! Touchez un poste sur le terrain pour remplacer un joueur, ou ajoutez-le au banc.", 'info', 4500);
+                    return;
+                }
+                placerTitulaire(slotLibre, id);
+            }
+        });
+
+        document.getElementById('recherche').addEventListener('input', rendreListeEffectif);
+
+        document.getElementById('btn-vider-compo').addEventListener('click', () => {
+            titulaires = {};
+            remplacants = [];
+            rafraichirVueTactique();
+        });
+
+        // Sauvegarde dans Firestore (compo_tactique + tableau compo plat pour compatibilité stats/notes)
         document.getElementById('btn-sauvegarder').addEventListener('click', async () => {
             if (!matchActifId) return;
             const bouton = document.getElementById('btn-sauvegarder');
             chargement(bouton, true);
 
-            const nouvelleCompo = [...document.querySelectorAll('.checkbox-compo:checked')].map(c => c.value);
+            const listeCompoPlate = compilerListeCompo(titulaires, remplacants);
+            const compoTactique = {
+                dispositif: dispositifActif,
+                titulaires: titulaires,
+                remplacants: remplacants
+            };
+
             try {
-                await updateDoc(doc(db, "matchs", matchActifId), { compo: nouvelleCompo });
-                toast(`Composition enregistrée (${nouvelleCompo.length} joueurs)`);
+                await updateDoc(doc(db, "matchs", matchActifId), {
+                    compo: listeCompoPlate,
+                    compo_tactique: compoTactique
+                });
+                const nbTit = Object.keys(titulaires).length;
+                toast(`Composition (${dispositifActif}) enregistrée : ${nbTit} titulaire(s) et ${remplacants.length} remplaçant(s) !`);
                 await initialiserPage();
             } catch (error) {
                 console.error("Erreur de sauvegarde :", error);

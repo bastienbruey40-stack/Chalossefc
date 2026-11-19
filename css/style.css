@@ -822,3 +822,174 @@ th:first-child { z-index: 2; }
 }
 .btn-editer:hover { background: var(--jaune-doux); border-color: var(--jaune); }
 
+/* =========================================================
+   TERRAIN DE FOOTBALL TACTIQUE & BANC DES REMPLAÇANTS
+   ========================================================= */
+.formation-pills {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;
+}
+.formation-pill {
+    padding: 9px 14px; border-radius: 999px;
+    background: var(--surface-2); color: var(--texte);
+    border: 1.5px solid var(--border);
+    font-weight: 700; font-size: .88rem; cursor: pointer;
+    transition: .15s;
+}
+.formation-pill:hover { border-color: var(--jaune); }
+.formation-pill.active {
+    background: var(--noir); color: var(--jaune); border-color: var(--noir);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .18);
+}
+@media (prefers-color-scheme: dark) {
+    .formation-pill.active { background: var(--jaune); color: #111; border-color: var(--jaune); }
+}
+
+.pitch-board {
+    border-radius: 22px; overflow: hidden;
+    background: #134e24;
+    border: 2px solid #0e3b1b;
+    box-shadow: var(--shadow-lg);
+    max-width: 580px; margin: 0 auto;
+}
+.pitch-header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 16px;
+    background: rgba(11, 12, 14, .88); color: #fff;
+    font-size: .82rem; font-weight: 700;
+}
+.pitch-formation-badge { color: var(--jaune); letter-spacing: .02em; }
+.pitch-count-badge {
+    padding: 2px 10px; border-radius: 999px;
+    background: rgba(255, 255, 255, .12); color: #e5e7eb; font-size: .76rem;
+}
+
+.pitch-field {
+    position: relative; width: 100%;
+    aspect-ratio: 68 / 92;
+    max-height: 650px;
+    /* Bandes de pelouse réalistes */
+    background:
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,.06) 0%, transparent 65%),
+        repeating-linear-gradient(
+            180deg,
+            #1e7a38 0%,
+            #1e7a38 10%,
+            #196b30 10%,
+            #196b30 20%
+        );
+    user-select: none;
+    overflow: hidden;
+}
+.pitch-lines {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none;
+}
+
+/* Pion d'un joueur sur le terrain */
+.pitch-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center;
+    background: none; border: none; padding: 0;
+    cursor: default; z-index: 2;
+    width: 82px;
+    transition: left .28s cubic-bezier(.2, .8, .2, 1), top .28s cubic-bezier(.2, .8, .2, 1), transform .15s;
+}
+.pitch-board.interactive .pitch-node { cursor: pointer; }
+.pitch-board.interactive .pitch-node:hover { transform: translate(-50%, -50%) scale(1.07); z-index: 4; }
+.pitch-board.interactive .pitch-node:active { transform: translate(-50%, -50%) scale(.96); }
+
+.pitch-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: .92rem; letter-spacing: .02em;
+    background: var(--jaune); color: #111;
+    border: 2.5px solid #111214;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .38);
+    transition: transform .15s, box-shadow .15s, background .15s;
+}
+.pitch-node.gk.filled .pitch-avatar {
+    background: #38bdf8; color: #082f49; border-color: #fff;
+}
+.pitch-node.empty .pitch-avatar {
+    background: rgba(15, 23, 42, .48);
+    color: rgba(255, 255, 255, .9);
+    border: 2px dashed rgba(255, 255, 255, .7);
+    font-size: 1.15rem; font-weight: 700;
+    backdrop-filter: blur(4px);
+}
+.pitch-board.interactive .pitch-node.empty:hover .pitch-avatar {
+    background: rgba(255, 204, 0, .3); border-color: var(--jaune); color: #fff;
+}
+.pitch-node.active .pitch-avatar {
+    box-shadow: 0 0 0 4px var(--jaune), 0 6px 18px rgba(0, 0, 0, .5);
+    transform: scale(1.1);
+}
+
+.pitch-pos-tag {
+    position: absolute; top: -5px; left: 10px;
+    padding: 1px 5px; border-radius: 6px;
+    background: #111214; color: var(--jaune);
+    font-size: .58rem; font-weight: 800; letter-spacing: .04em;
+    border: 1px solid rgba(255, 255, 255, .25);
+    z-index: 3;
+}
+.pitch-rating {
+    position: absolute; top: -6px; right: 4px;
+    padding: 1px 5px; border-radius: 6px;
+    background: #fff; color: #111;
+    font-size: .62rem; font-weight: 800;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+    z-index: 3; white-space: nowrap;
+}
+.pitch-events {
+    display: flex; gap: 2px; margin-top: -8px; z-index: 3;
+    background: rgba(17, 18, 20, .88); padding: 1px 5px; border-radius: 999px;
+    font-size: .64rem; color: #fff; font-weight: 700;
+}
+
+.pitch-label {
+    margin-top: 3px;
+    padding: 2px 7px; border-radius: 7px;
+    background: rgba(15, 17, 21, .88); color: #fff;
+    font-size: .72rem; font-weight: 700; line-height: 1.25;
+    max-width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+}
+.pitch-node.empty .pitch-label {
+    background: rgba(15, 17, 21, .6); color: rgba(255, 255, 255, .85);
+    font-size: .66rem;
+}
+
+@media (max-width: 440px) {
+    .pitch-node { width: 68px; }
+    .pitch-avatar { width: 38px; height: 38px; font-size: .8rem; }
+    .pitch-label { font-size: .65rem; max-width: 74px; padding: 2px 5px; }
+    .pitch-pos-tag { left: 6px; font-size: .54rem; }
+}
+
+/* Banc des remplaçants */
+.bench-card {
+    max-width: 580px; margin: 14px auto 0;
+}
+.bench-grid {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+}
+.bench-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 11px; border-radius: 12px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-size: .86rem; font-weight: 600; color: var(--texte);
+}
+.bench-chip .avatar {
+    width: 28px; height: 28px; font-size: .72rem;
+}
+.bench-chip-btn {
+    width: 22px; height: 22px; border-radius: 50%; border: none;
+    background: var(--rouge-doux); color: var(--rouge);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .72rem; font-weight: 800; cursor: pointer;
+}
+.bench-chip-btn:hover { background: var(--rouge); color: #fff; }
+
+

@@ -18,21 +18,35 @@
             <div class="toolbar-row" style="margin-bottom: 6px;">
                 <h1><img src="chalosse.webp" alt="" class="logo-header"> <span id="titre-match">Match</span></h1>
                 <div class="toolbar-actions hidden" id="outils-admin-match">
-                    <button type="button" class="btn-chip" id="btn-editer-match">✏️ Modifier le match</button>
-                    <button type="button" class="btn-chip" id="btn-suppr-notes-match" title="Effacer toutes les notes de ce match">🗑️ Effacer les notes</button>
+                    <a href="gerer_compo.html" class="btn-chip primary" id="lien-gerer-compo">📋 Modifier la compo</a>
+                    <button type="button" class="btn-chip" id="btn-editer-match">✏️ Infos match</button>
+                    <button type="button" class="btn-chip" id="btn-suppr-notes-match" title="Effacer toutes les notes de ce match">🗑️ Effacer notes</button>
                 </div>
             </div>
             <p id="sous-titre-match">Chargement…</p>
         </header>
 
         <div class="onglets" role="tablist">
-            <button class="btn-onglet actif" id="btn-noter" data-onglet="noter">📝 Noter</button>
+            <button class="btn-onglet actif" id="btn-compo" data-onglet="compo">⚽ Compo</button>
+            <button class="btn-onglet" id="btn-noter" data-onglet="noter">📝 Noter</button>
             <button class="btn-onglet" id="btn-classement" data-onglet="classement">📊 Classement</button>
         </div>
 
-        <div id="onglet-noter" class="contenu-onglet actif">
+        <!-- Onglet 1 : Composition sur le terrain de football -->
+        <div id="onglet-compo" class="contenu-onglet actif">
+            <div id="vue-terrain-match">
+                <div class="skeleton" style="height: 440px;"></div>
+            </div>
+            <div id="vue-banc-match" class="card bench-card hidden">
+                <strong style="font-size: .95rem;">🪑 Remplaçants</strong>
+                <div id="liste-banc-match" class="bench-grid"></div>
+            </div>
+        </div>
+
+        <!-- Onglet 2 : Noter les joueurs -->
+        <div id="onglet-noter" class="contenu-onglet">
             <div class="card">
-                <p class="muted" style="margin-top:0">Donnez une note de 0 à 10 aux joueurs de la compo (par pas de 0,5).</p>
+                <p class="muted" style="margin-top:0">Donnez une note de 0 à 10 aux joueurs du match (par pas de 0,5).</p>
                 <div id="liste-compo"><div class="skeleton small"></div><div class="skeleton small"></div></div>
             </div>
             <div class="sticky-actions hidden" id="barre-notes">
@@ -40,6 +54,7 @@
             </div>
         </div>
 
+        <!-- Onglet 3 : Classement Homme du match -->
         <div id="onglet-classement" class="contenu-onglet">
             <div id="admin-votants" class="info-admin">
                 👥 Total des votants pour ce match : <span id="nb-votants">0</span>
@@ -56,8 +71,9 @@
         import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
+        import { toast, confirmer, chargement, echapper, initiales, formaterDate } from "./js/ui.js";
         import { editerMatchComplet } from "./js/matchs.js";
+        import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
 
         const matchId = new URLSearchParams(window.location.search).get('match');
 
@@ -67,8 +83,12 @@
         let notesDocsDuMatch = [];
         let notesExistantes = {};
 
+        if (matchId) {
+            document.getElementById('lien-gerer-compo').href = `gerer_compo.html?match=${encodeURIComponent(matchId)}`;
+        }
+
         function changerOnglet(cible) {
-            ['noter', 'classement'].forEach(o => {
+            ['compo', 'noter', 'classement'].forEach(o => {
                 document.getElementById(`btn-${o}`).classList.toggle('actif', o === cible);
                 document.getElementById(`onglet-${o}`).classList.toggle('actif', o === cible);
             });
@@ -90,7 +110,7 @@
             try {
                 const matchSnap = await getDoc(doc(db, "matchs", matchId));
                 if (!matchSnap.exists()) {
-                    document.getElementById('liste-compo').innerHTML = `<p class="error-text">Ce match n'existe plus.</p>`;
+                    document.getElementById('vue-terrain-match').innerHTML = `<p class="empty error-text">Ce match n'existe plus.</p>`;
                     return;
                 }
 
@@ -102,16 +122,28 @@
                 document.getElementById('sous-titre-match').textContent =
                     `${matchData.equipe_type === 'premiere' ? 'Équipe Première' : 'Équipe Réserve'} · ${formaterDate(matchData.date)}${score}`;
 
-                const compoIds = matchData.compo || [];
+                const tactique = extraireCompoTactique(matchData);
+                const compoIds = compilerListeCompo(tactique.titulaires, tactique.remplacants);
+
                 if (compoIds.length === 0) {
+                    const lienAdmin = estAdmin ? `<br><a href="gerer_compo.html?match=${encodeURIComponent(matchId)}" class="btn-chip primary" style="margin-top:12px;">📋 Composer l'équipe</a>` : '';
+                    document.getElementById('vue-terrain-match').innerHTML = `<div class="empty">Aucune composition enregistrée pour ce match.${lienAdmin}</div>`;
+                    document.getElementById('vue-banc-match').classList.add('hidden');
                     document.getElementById('liste-compo').innerHTML = `<p class="empty" style="margin:0">Aucune composition pour ce match.</p>`;
                     return;
                 }
 
-                const joueursInfos = {};
+                const joueursMap = {};
                 const usersSnap = await getDocs(collection(db, "utilisateurs"));
                 usersSnap.forEach(u => {
-                    if (compoIds.includes(u.id)) joueursInfos[u.id] = `${u.data().prenom} ${u.data().nom}`;
+                    const d = u.data();
+                    joueursMap[u.id] = {
+                        id: u.id,
+                        prenom: d.prenom || '',
+                        nom: d.nom || '',
+                        nomComplet: `${d.prenom || ''} ${d.nom || ''}`.trim(),
+                        poste: d.poste || ''
+                    };
                 });
 
                 const notesSnap = await getDocs(collection(db, "notes"));
@@ -121,7 +153,7 @@
                 notesDocsDuMatch = [];
 
                 compoIds.forEach(id => {
-                    if (joueursInfos[id]) statsMatch[id] = { nom: joueursInfos[id], total: 0, nb: 0 };
+                    if (joueursMap[id]) statsMatch[id] = { nom: joueursMap[id].nomComplet, total: 0, nb: 0 };
                 });
 
                 notesSnap.forEach(nDoc => {
@@ -140,6 +172,48 @@
                     }
                 });
 
+                // Moyennes par joueur pour les afficher directement sur le terrain
+                const notesMoyennes = {};
+                for (const id in statsMatch) {
+                    if (statsMatch[id].nb > 0) {
+                        notesMoyennes[id] = (statsMatch[id].total / statsMatch[id].nb).toFixed(1);
+                    }
+                }
+
+                // 1. Rendu du terrain de football
+                document.getElementById('vue-terrain-match').innerHTML = rendreTerrainHTML({
+                    dispositif: tactique.dispositif,
+                    titulaires: tactique.titulaires,
+                    joueursMap,
+                    statsMatch: matchData.stats_joueurs || {},
+                    notesMoyennes,
+                    interactif: false
+                });
+
+                // 2. Rendu du banc des remplaçants sous le terrain
+                const rempValides = tactique.remplacants.filter(id => joueursMap[id]);
+                const carteBanc = document.getElementById('vue-banc-match');
+                if (rempValides.length > 0) {
+                    carteBanc.classList.remove('hidden');
+                    document.getElementById('liste-banc-match').innerHTML = rempValides.map(id => {
+                        const j = joueursMap[id];
+                        const st = (matchData.stats_joueurs || {})[id] || {};
+                        const moy = notesMoyennes[id] ? ` · ⭐ ${notesMoyennes[id]}` : '';
+                        let ev = '';
+                        if (st.buts > 0) ev += ` ⚽${st.buts > 1 ? st.buts : ''}`;
+                        if (st.passes > 0) ev += ` 🎯${st.passes > 1 ? st.passes : ''}`;
+                        if (st.jaunes > 0) ev += ` 🟨`;
+                        if (st.rouges > 0) ev += ` 🟥`;
+                        return `
+                            <div class="bench-chip">
+                                <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
+                                <span>${echapper(j.nomComplet)}${ev}<small class="muted">${moy}</small></span>
+                            </div>`;
+                    }).join('');
+                } else {
+                    carteBanc.classList.add('hidden');
+                }
+
                 if (estAdmin) {
                     document.getElementById('admin-votants').style.display = 'block';
                     document.getElementById('nb-votants').textContent = votantsUniques.size;
@@ -147,15 +221,49 @@
 
                 afficherClassement(statsMatch);
 
-                document.getElementById('liste-compo').innerHTML = compoIds.filter(id => joueursInfos[id]).map(jId => {
-                    const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
-                    return `
-                        <div class="joueur-ligne">
-                            <span class="joueur-nom">${echapper(joueursInfos[jId])}</span>
-                            <input type="number" inputmode="decimal" class="input-note note-joueur" data-id="${jId}"
-                                   min="0" max="10" step="0.5" value="${noteSaved}" placeholder="/10" aria-label="Note de ${echapper(joueursInfos[jId])}">
-                        </div>`;
-                }).join('');
+                // 3. Onglet Noter (séparé clairement entre Titulaires et Remplaçants)
+                const configDisp = DISPOSITIFS[tactique.dispositif] || DISPOSITIFS["4-3-3"];
+                let htmlNoter = '';
+
+                const slotsOccupes = Object.keys(tactique.titulaires)
+                    .map(Number)
+                    .filter(idx => joueursMap[tactique.titulaires[idx]])
+                    .sort((a, b) => a - b);
+
+                if (slotsOccupes.length > 0) {
+                    htmlNoter += `<div class="muted" style="font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin:4px 0 6px;">⚽ Titulaires (${echapper(tactique.dispositif)})</div>`;
+                    htmlNoter += slotsOccupes.map(idx => {
+                        const jId = tactique.titulaires[idx];
+                        const j = joueursMap[jId];
+                        const codePoste = configDisp.postes[idx]?.code || '';
+                        const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
+                        return `
+                            <div class="joueur-ligne">
+                                <span>
+                                    <span class="tag" style="margin-right:6px;">${echapper(codePoste)}</span>
+                                    <span class="joueur-nom">${echapper(j.nomComplet)}</span>
+                                </span>
+                                <input type="number" inputmode="decimal" class="input-note note-joueur" data-id="${jId}"
+                                       min="0" max="10" step="0.5" value="${noteSaved}" placeholder="/10" aria-label="Note de ${echapper(j.nomComplet)}">
+                            </div>`;
+                    }).join('');
+                }
+
+                if (rempValides.length > 0) {
+                    htmlNoter += `<div class="muted" style="font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px;">🪑 Remplaçants</div>`;
+                    htmlNoter += rempValides.map(jId => {
+                        const j = joueursMap[jId];
+                        const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
+                        return `
+                            <div class="joueur-ligne">
+                                <span class="joueur-nom">${echapper(j.nomComplet)}</span>
+                                <input type="number" inputmode="decimal" class="input-note note-joueur" data-id="${jId}"
+                                       min="0" max="10" step="0.5" value="${noteSaved}" placeholder="/10" aria-label="Note de ${echapper(j.nomComplet)}">
+                            </div>`;
+                    }).join('');
+                }
+
+                document.getElementById('liste-compo').innerHTML = htmlNoter;
                 document.getElementById('barre-notes').classList.remove('hidden');
             } catch (error) {
                 console.error("Erreur :", error);
