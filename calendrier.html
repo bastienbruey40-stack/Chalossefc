@@ -31,9 +31,9 @@
         </div>
 
         <div class="onglets" role="tablist">
-            <button class="btn-onglet actif" data-filtre="tous">Tous</button>
-            <button class="btn-onglet" data-filtre="avenir">À venir</button>
+            <button class="btn-onglet actif" data-filtre="avenir">À venir</button>
             <button class="btn-onglet" data-filtre="joues">Résultats</button>
+            <button class="btn-onglet" data-filtre="tous">Tous</button>
         </div>
 
         <div class="grid-2" id="zone-matchs">
@@ -65,7 +65,9 @@
 
         let estAdmin = false;
         let tousLesMatchs = [];
-        let filtre = 'tous';
+        const urlFiltre = new URLSearchParams(window.location.search).get('filtre');
+        let filtre = (urlFiltre && ['avenir', 'joues', 'tous'].includes(urlFiltre)) ? urlFiltre : 'avenir';
+        document.querySelectorAll('[data-filtre]').forEach(b => b.classList.toggle('actif', b.dataset.filtre === filtre));
         let modeSelection = false;
         const selection = new Set();
 
