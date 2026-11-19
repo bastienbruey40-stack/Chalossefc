@@ -316,11 +316,12 @@
             if (rempValides.length === 0) {
                 zoneBanc.innerHTML = `<p class="muted" style="font-size:.85rem; margin:4px 0;">Aucun remplaçant sélectionné. Cliquez sur « ➕ Ajouter un remplaçant ».</p>`;
             } else {
-                zoneBanc.innerHTML = rempValides.map(id => {
+                zoneBanc.innerHTML = rempValides.map((id, idx) => {
                     const j = joueursMap[id];
+                    const numRemp = 12 + idx;
                     return `
                         <div class="bench-chip">
-                            <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
+                            <span class="bench-num">${numRemp}</span>
                             <span>${echapper(j.nomComplet)} <small class="muted">(${echapper(j.poste)})</small></span>
                             <button type="button" class="bench-chip-btn" data-retirer-remp="${echapper(id)}" title="Retirer du banc">✕</button>
                         </div>`;

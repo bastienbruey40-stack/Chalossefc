@@ -899,43 +899,31 @@ th:first-child { z-index: 2; }
 .pitch-board.interactive .pitch-node:hover { transform: translate(-50%, -50%) scale(1.07); z-index: 4; }
 .pitch-board.interactive .pitch-node:active { transform: translate(-50%, -50%) scale(.96); }
 
-.pitch-avatar {
-    width: 44px; height: 44px; border-radius: 50%;
+.pitch-jersey-wrap {
+    position: relative;
+    width: 48px; height: 46px;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: .92rem; letter-spacing: .02em;
-    background: var(--jaune); color: #111;
-    border: 2.5px solid #111214;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, .38);
-    transition: transform .15s, box-shadow .15s, background .15s;
+    transition: transform .15s, filter .15s;
 }
-.pitch-node.gk.filled .pitch-avatar {
-    background: #38bdf8; color: #082f49; border-color: #fff;
+.pitch-jersey {
+    width: 100%; height: 100%;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .42));
 }
-.pitch-node.empty .pitch-avatar {
-    background: rgba(15, 23, 42, .48);
-    color: rgba(255, 255, 255, .9);
-    border: 2px dashed rgba(255, 255, 255, .7);
-    font-size: 1.15rem; font-weight: 700;
-    backdrop-filter: blur(4px);
-}
-.pitch-board.interactive .pitch-node.empty:hover .pitch-avatar {
-    background: rgba(255, 204, 0, .3); border-color: var(--jaune); color: #fff;
-}
-.pitch-node.active .pitch-avatar {
-    box-shadow: 0 0 0 4px var(--jaune), 0 6px 18px rgba(0, 0, 0, .5);
-    transform: scale(1.1);
+.pitch-node.active .pitch-jersey-wrap {
+    filter: drop-shadow(0 0 8px var(--jaune));
+    transform: scale(1.12);
 }
 
 .pitch-pos-tag {
-    position: absolute; top: -5px; left: 10px;
+    position: absolute; top: -4px; left: 6px;
     padding: 1px 5px; border-radius: 6px;
     background: #111214; color: var(--jaune);
-    font-size: .58rem; font-weight: 800; letter-spacing: .04em;
+    font-size: .56rem; font-weight: 800; letter-spacing: .04em;
     border: 1px solid rgba(255, 255, 255, .25);
     z-index: 3;
 }
 .pitch-rating {
-    position: absolute; top: -6px; right: 4px;
+    position: absolute; top: -4px; right: 4px;
     padding: 1px 5px; border-radius: 6px;
     background: #fff; color: #111;
     font-size: .62rem; font-weight: 800;
@@ -943,29 +931,47 @@ th:first-child { z-index: 2; }
     z-index: 3; white-space: nowrap;
 }
 .pitch-events {
-    display: flex; gap: 2px; margin-top: -8px; z-index: 3;
+    display: flex; gap: 2px; margin-top: -6px; z-index: 3;
     background: rgba(17, 18, 20, .88); padding: 1px 5px; border-radius: 999px;
     font-size: .64rem; color: #fff; font-weight: 700;
 }
 
 .pitch-label {
-    margin-top: 3px;
-    padding: 2px 7px; border-radius: 7px;
-    background: rgba(15, 17, 21, .88); color: #fff;
+    margin-top: 2px;
+    padding: 2px 6px 2px 3px; border-radius: 7px;
+    background: rgba(15, 17, 21, .9); color: #fff;
     font-size: .72rem; font-weight: 700; line-height: 1.25;
-    max-width: 92px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+    display: inline-flex; align-items: center; gap: 4px;
+    max-width: 104px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .32);
+}
+.pitch-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 17px; height: 16px; padding: 0 4px; border-radius: 4px;
+    background: var(--jaune); color: #111;
+    font-size: .66rem; font-weight: 800; line-height: 1;
+    flex-shrink: 0; font-variant-numeric: tabular-nums;
+}
+.pitch-node.gk.filled .pitch-num {
+    background: #38bdf8; color: #082f49;
+}
+.pitch-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
 .pitch-node.empty .pitch-label {
-    background: rgba(15, 17, 21, .6); color: rgba(255, 255, 255, .85);
+    background: rgba(15, 17, 21, .64); color: rgba(255, 255, 255, .88);
     font-size: .66rem;
+}
+.pitch-node.empty .pitch-num {
+    background: rgba(255, 255, 255, .2); color: #fff;
 }
 
 @media (max-width: 440px) {
-    .pitch-node { width: 68px; }
-    .pitch-avatar { width: 38px; height: 38px; font-size: .8rem; }
-    .pitch-label { font-size: .65rem; max-width: 74px; padding: 2px 5px; }
-    .pitch-pos-tag { left: 6px; font-size: .54rem; }
+    .pitch-node { width: 72px; }
+    .pitch-jersey-wrap { width: 40px; height: 38px; }
+    .pitch-label { font-size: .63rem; max-width: 82px; padding: 2px 5px 2px 3px; gap: 3px; }
+    .pitch-num { min-width: 15px; height: 14px; font-size: .6rem; padding: 0 3px; }
+    .pitch-pos-tag { left: 4px; font-size: .52rem; }
 }
 
 /* Banc des remplaçants */
@@ -983,6 +989,16 @@ th:first-child { z-index: 2; }
 }
 .bench-chip .avatar {
     width: 28px; height: 28px; font-size: .72rem;
+}
+.bench-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; height: 24px; padding: 0 6px; border-radius: 8px;
+    background: var(--noir); color: var(--jaune);
+    font-size: .76rem; font-weight: 800; flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+@media (prefers-color-scheme: dark) {
+    .bench-num { background: var(--jaune); color: #111; }
 }
 .bench-chip-btn {
     width: 22px; height: 22px; border-radius: 50%; border: none;

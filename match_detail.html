@@ -71,7 +71,7 @@
         import { collection, getDocs, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil } from "./js/firebase.js";
-        import { toast, confirmer, chargement, echapper, initiales, formaterDate } from "./js/ui.js";
+        import { toast, confirmer, chargement, echapper, formaterDate } from "./js/ui.js";
         import { editerMatchComplet } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML } from "./js/tactique.js";
 
@@ -195,8 +195,9 @@
                 const carteBanc = document.getElementById('vue-banc-match');
                 if (rempValides.length > 0) {
                     carteBanc.classList.remove('hidden');
-                    document.getElementById('liste-banc-match').innerHTML = rempValides.map(id => {
+                    document.getElementById('liste-banc-match').innerHTML = rempValides.map((id, idx) => {
                         const j = joueursMap[id];
+                        const numRemp = 12 + idx;
                         const st = (matchData.stats_joueurs || {})[id] || {};
                         const moy = notesMoyennes[id] ? ` · ⭐ ${notesMoyennes[id]}` : '';
                         let ev = '';
@@ -206,7 +207,7 @@
                         if (st.rouges > 0) ev += ` 🟥`;
                         return `
                             <div class="bench-chip">
-                                <span class="avatar">${echapper(initiales(j.prenom, j.nom))}</span>
+                                <span class="bench-num">${numRemp}</span>
                                 <span>${echapper(j.nomComplet)}${ev}<small class="muted">${moy}</small></span>
                             </div>`;
                     }).join('');
@@ -235,12 +236,15 @@
                     htmlNoter += slotsOccupes.map(idx => {
                         const jId = tactique.titulaires[idx];
                         const j = joueursMap[jId];
-                        const codePoste = configDisp.postes[idx]?.code || '';
+                        const posteInfo = configDisp.postes[idx] || {};
+                        const codePoste = posteInfo.code || '';
+                        const numMaillot = posteInfo.num || (idx + 1);
                         const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
                         return `
                             <div class="joueur-ligne">
-                                <span>
-                                    <span class="tag" style="margin-right:6px;">${echapper(codePoste)}</span>
+                                <span style="display:inline-flex; align-items:center; gap:6px;">
+                                    <span class="bench-num" style="min-width:22px; height:22px; font-size:.72rem;">${numMaillot}</span>
+                                    <span class="tag" style="margin:0;">${echapper(codePoste)}</span>
                                     <span class="joueur-nom">${echapper(j.nomComplet)}</span>
                                 </span>
                                 <input type="number" inputmode="decimal" class="input-note note-joueur" data-id="${jId}"
@@ -251,12 +255,16 @@
 
                 if (rempValides.length > 0) {
                     htmlNoter += `<div class="muted" style="font-size:.78rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin:16px 0 6px;">🪑 Remplaçants</div>`;
-                    htmlNoter += rempValides.map(jId => {
+                    htmlNoter += rempValides.map((jId, idx) => {
                         const j = joueursMap[jId];
+                        const numRemp = 12 + idx;
                         const noteSaved = notesExistantes[jId] !== undefined ? notesExistantes[jId] : "";
                         return `
                             <div class="joueur-ligne">
-                                <span class="joueur-nom">${echapper(j.nomComplet)}</span>
+                                <span style="display:inline-flex; align-items:center; gap:6px;">
+                                    <span class="bench-num" style="min-width:22px; height:22px; font-size:.72rem;">${numRemp}</span>
+                                    <span class="joueur-nom">${echapper(j.nomComplet)}</span>
+                                </span>
                                 <input type="number" inputmode="decimal" class="input-note note-joueur" data-id="${jId}"
                                        min="0" max="10" step="0.5" value="${noteSaved}" placeholder="/10" aria-label="Note de ${echapper(j.nomComplet)}">
                             </div>`;
