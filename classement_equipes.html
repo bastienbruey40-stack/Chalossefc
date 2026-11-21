@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#111214">
+    <title>Classement - FC Chalosse</title>
+    <link rel="apple-touch-icon" href="chalosse.webp">
+    <link rel="icon" href="chalosse.webp">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <script type="module" src="js/layout.js"></script>
+</head>
+<body class="app">
+
+    <main class="container">
+        <header class="page-header">
+            <h1><img src="chalosse.webp" alt="" class="logo-header"> Classement FFF</h1>
+            <p id="sous-titre-classement">Classement officiel des deux équipes Séniors (District des Landes).</p>
+        </header>
+
+        <div class="onglets" role="tablist">
+            <button type="button" class="btn-onglet actif" data-equipe="premiere">🔵 Équipe Première</button>
+            <button type="button" class="btn-onglet" data-equipe="reserve">🟢 Équipe Réserve</button>
+        </div>
+
+        <div class="toolbar-row" style="margin-bottom: 14px;">
+            <div id="badge-info-poule" class="muted" style="font-size: .84rem; font-weight: 600;">
+                Chargement du classement…
+            </div>
+            <div class="toolbar-actions">
+                <button type="button" class="btn-chip primary" id="btn-sync-api">🔄 Actualiser (API FFF)</button>
+                <button type="button" class="btn-chip hidden" id="btn-import-manuel">📋 Coller depuis FFF</button>
+                <a href="https://epreuves.fff.fr/club/529258" target="_blank" rel="noopener" class="btn-chip">🌐 Site FFF</a>
+            </div>
+        </div>
+
+        <div id="zone-alerte-api" class="card hidden" style="margin-bottom: 14px; border-color: var(--orange); background: var(--orange-doux); padding: 12px 14px; font-size: .86rem;"></div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 44px; text-align:center;">#</th>
+                        <th style="text-align:left;">Équipe</th>
+                        <th title="Points">Pts</th>
+                        <th title="Matchs joués">J</th>
+                        <th title="Victoires">G</th>
+                        <th title="Matchs nuls">N</th>
+                        <th title="Défaites">P</th>
+                        <th title="Buts pour">BP</th>
+                        <th title="Buts contre">BC</th>
+                        <th title="Différence de buts">Diff</th>
+                    </tr>
+                </thead>
+                <tbody id="corps-classement">
+                    <tr><td colspan="10" class="muted">Chargement du classement…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="legende">
+            <span>Pts : points</span><span>J : joués</span><span>G : gagnés</span><span>N : nuls</span><span>P : perdus</span><span>BP / BC : buts pour / contre</span><span>Diff : différence</span>
+        </div>
+    </main>
+
+    <script type="module">
+        import { doc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { db, auth, chargerProfil, lireDoc, invaliderCache } from "./js/firebase.js";
+        import { toast, ouvrirModal, chargement, echapper } from "./js/ui.js";
+        import { recupererClassementsViaApiFFF, parserClassementFFF, URL_FFF_CLUB } from "./js/fff_classement.js";
+
+        const LIBELLES_DEFAUT = {
+            premiere: { titre: 'Séniors Départemental 2 · Poule A', docId: 'classement_premiere' },
+            reserve:  { titre: 'Séniors Départemental 3 · Poule C', docId: 'classement_reserve' }
+        };
+
+        let estAdmin = false;
+        let equipeActive = 'premiere';
+        const donneesClassement = { premiere: null, reserve: null };
+
+        function choisirPlusRecent(a, b) {
+            const aOk = a && Array.isArray(a.lignes) && a.lignes.length > 0;
+            const bOk = b && Array.isArray(b.lignes) && b.lignes.length > 0;
+            if (!aOk && !bOk) return null;
+            if (aOk && !bOk) return a;
+            if (!aOk && bOk) return b;
+            const tA = a.maj ? new Date(a.maj).getTime() : 0;
+            const tB = b.maj ? new Date(b.maj).getTime() : 0;
+            return tB > tA ? b : a;
+        }
+
+        async function chargerJsonBot() {
+            try {
+                const resp = await fetch('./data/classements_fff.json', { cache: 'no-cache' });
+                if (!resp.ok) return null;
+                return await resp.json();
+            } catch {
+                return null;
+            }
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) { window.location.href = "connexion.html"; return; }
+
+            // Charge en parallèle le profil, le fichier synchronisé par GitHub Actions et Firestore
+            const [profil, jsonBot, docPremiere, docReserve] = await Promise.all([
+                chargerProfil(user.uid).catch(() => null),
+                chargerJsonBot(),
+                lireDoc("saisons", LIBELLES_DEFAUT.premiere.docId).catch(() => null),
+                lireDoc("saisons", LIBELLES_DEFAUT.reserve.docId).catch(() => null)
+            ]);
+
+            estAdmin = profil?.role === "admin";
+            if (estAdmin) {
+                document.getElementById('btn-import-manuel').classList.remove('hidden');
+            }
+
+            donneesClassement.premiere = choisirPlusRecent(jsonBot?.premiere, docPremiere?.data);
+            donneesClassement.reserve = choisirPlusRecent(jsonBot?.reserve, docReserve?.data);
+
+            afficherClassement();
+        });
+
+        function formaterMaj(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        function afficherClassement() {
+            const data = donneesClassement[equipeActive];
+            const meta = LIBELLES_DEFAUT[equipeActive];
+            const badge = document.getElementById('badge-info-poule');
+            const corps = document.getElementById('corps-classement');
+
+            if (!data || !Array.isArray(data.lignes) || data.lignes.length === 0) {
+                badge.textContent = meta.titre;
+                const aideAdmin = estAdmin
+                    ? `<br><span class="muted" style="font-size:.82rem;">Utilisez « 🔄 Actualiser (API FFF) » ou « 📋 Coller depuis FFF » pour enregistrer le classement.</span>`
+                    : `<br><span class="muted" style="font-size:.82rem;">Cliquez sur « 🔄 Actualiser (API FFF) » ou consultez le site officiel FFF.</span>`;
+                corps.innerHTML = `<tr><td colspan="10" style="padding:24px 12px; text-align:center;">Aucun classement enregistré pour l'instant pour cette équipe.${aideAdmin}</td></tr>`;
+                return;
+            }
+
+            const nomComp = data.competition || meta.titre;
+            const pouleTxt = data.poule && !nomComp.toLowerCase().includes(data.poule.toLowerCase()) ? ` · ${data.poule}` : '';
+            const journeeTxt = data.journee ? ` · J${data.journee}` : '';
+            const majTxt = data.maj ? ` · MàJ ${formaterMaj(data.maj)}` : '';
+            badge.textContent = `${nomComp}${pouleTxt}${journeeTxt}${majTxt}`;
+
+            corps.innerHTML = data.lignes.map((l) => {
+                const estNous = Boolean(l.estChalosse);
+                const clsRow = estNous ? 'row-chalosse' : '';
+                const medaille = l.rang === 1 ? '🥇' : (l.rang === 2 ? '🥈' : (l.rang === 3 ? '🥉' : l.rang));
+                const diffStr = l.diff > 0 ? `+${l.diff}` : `${l.diff}`;
+                const diffCls = l.diff > 0 ? 'c-buts' : (l.diff < 0 ? 'c-rouges' : 'c-zero');
+
+                return `
+                    <tr class="${clsRow}">
+                        <td style="text-align:center; font-weight:800;">${medaille}</td>
+                        <td style="text-align:left; font-weight:${estNous ? '800' : '600'};">
+                            ${estNous ? '⭐ ' : ''}${echapper(l.equipe)}
+                        </td>
+                        <td style="font-weight:900; color:var(--jaune);">${l.points}</td>
+                        <td>${l.joues}</td>
+                        <td>${l.gagnes}</td>
+                        <td>${l.nuls}</td>
+                        <td>${l.perdus}</td>
+                        <td>${l.bp}</td>
+                        <td>${l.bc}</td>
+                        <td class="${diffCls}" style="font-weight:700;">${diffStr}</td>
+                    </tr>`;
+            }).join('');
+        }
+
+        async function sauvegarderClassementFirestore(cleEquipe, data) {
+            if (!estAdmin || !data || !data.lignes?.length) return;
+            try {
+                await setDoc(doc(db, "saisons", LIBELLES_DEFAUT[cleEquipe].docId), data);
+                invaliderCache("saisons");
+            } catch (e) {
+                console.warn("Impossible de sauvegarder le classement dans Firestore :", e);
+            }
+        }
+
+        async function synchroniserApiFFF({ silencieux = false } = {}) {
+            const btn = document.getElementById('btn-sync-api');
+            const alerte = document.getElementById('zone-alerte-api');
+            if (!silencieux) chargement(btn, true, 'Appel API FFF…');
+
+            try {
+                const res = await recupererClassementsViaApiFFF();
+                alerte.classList.add('hidden');
+
+                let majCount = 0;
+                if (res.premiere?.lignes?.length) {
+                    donneesClassement.premiere = res.premiere;
+                    majCount++;
+                    sauvegarderClassementFirestore('premiere', res.premiere);
+                }
+                if (res.reserve?.lignes?.length) {
+                    donneesClassement.reserve = res.reserve;
+                    majCount++;
+                    sauvegarderClassementFirestore('reserve', res.reserve);
+                }
+
+                afficherClassement();
+                if (!silencieux) {
+                    toast(majCount > 0 ? `Classement FFF actualisé (${majCount} équipe(s)) !` : "Aucune donnée retournée par l'API FFF.", majCount > 0 ? 'success' : 'info');
+                }
+            } catch (err) {
+                console.warn("API FFF indisponible depuis le navigateur :", err);
+                if (!silencieux || !donneesClassement[equipeActive]) {
+                    const msgAction = estAdmin
+                        ? `Vous pouvez mettre à jour le tableau en 2 secondes avec le bouton <strong>« 📋 Coller depuis FFF »</strong> (Ctrl+A / Ctrl+C sur la page Classement de <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>).`
+                        : `Un administrateur peut actualiser le tableau depuis <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>.`;
+                    alerte.innerHTML = `<strong>⚠️ L'API directe de la FFF bloque l'accès navigateur (CORS / sécurité FFF).</strong><br>${msgAction}`;
+                    alerte.classList.remove('hidden');
+                }
+            } finally {
+                if (!silencieux) chargement(btn, false);
+            }
+        }
+
+        // Changement d'onglet Équipe Première / Équipe Réserve
+        document.querySelectorAll('[data-equipe]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('[data-equipe]').forEach(b => b.classList.toggle('actif', b === btn));
+                equipeActive = btn.dataset.equipe;
+                afficherClassement();
+            });
+        });
+
+        document.getElementById('btn-sync-api').addEventListener('click', () => {
+            synchroniserApiFFF({ silencieux: false });
+        });
+
+        // Modale admin : mise à jour par copier-coller depuis epreuves.fff.fr
+        document.getElementById('btn-import-manuel').addEventListener('click', () => {
+            const labelEquipe = equipeActive === 'premiere' ? 'Équipe Première (D2 · Poule A)' : 'Équipe Réserve (D3 · Poule C)';
+            ouvrirModal((boite, fermer) => {
+                boite.classList.add('modal-wide');
+                boite.innerHTML = `
+                    <h3 class="modal-title">📋 Importer le classement · ${echapper(labelEquipe)}</h3>
+                    <p class="modal-text">
+                        <strong>1.</strong> Ouvrez la page <strong>Classement</strong> de l'équipe sur <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>.<br>
+                        <strong>2.</strong> Faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>, puis collez ci-dessous (<strong>Ctrl+V</strong>).
+                    </p>
+                    <textarea id="txt-classement-fff" rows="9" style="margin-top:8px; font-size:.86rem;" placeholder="Collez ici le tableau de classement copié depuis epreuves.fff.fr…"></textarea>
+                    <div id="apercu-parse-classement" class="muted" style="font-size:.82rem; margin-top:8px;"></div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-imp">Annuler</button>
+                        <button type="button" class="btn-modal btn-modal-ok" id="btn-valider-imp">💾 Enregistrer ce classement</button>
+                    </div>
+                `;
+
+                const txt = boite.querySelector('#txt-classement-fff');
+                const apercu = boite.querySelector('#apercu-parse-classement');
+                let dernierParse = { lignes: [], competition: '' };
+
+                txt.addEventListener('input', () => {
+                    dernierParse = parserClassementFFF(txt.value);
+                    if (dernierParse.lignes.length > 0) {
+                        const ch = dernierParse.lignes.find(l => l.estChalosse);
+                        apercu.innerHTML = `<span style="color:var(--vert); font-weight:700;">✅ ${dernierParse.lignes.length} équipes détectées</span>${ch ? ` · Chalosse détecté <strong>${ch.rang}e (${ch.points} pts)</strong>` : ''}`;
+                    } else if (txt.value.trim().length > 10) {
+                        apercu.innerHTML = `<span style="color:var(--orange);">⚠️ Aucune ligne de classement reconnue pour l'instant.</span>`;
+                    } else {
+                        apercu.textContent = '';
+                    }
+                });
+
+                boite.querySelector('#btn-annuler-imp').onclick = () => fermer(false);
+                boite.querySelector('#btn-valider-imp').onclick = async () => {
+                    dernierParse = parserClassementFFF(txt.value);
+                    if (dernierParse.lignes.length < 2) {
+                        toast("Impossible de détecter le tableau. Vérifiez votre copier-coller depuis epreuves.fff.fr.", 'error', 4500);
+                        return;
+                    }
+                    const btnOk = boite.querySelector('#btn-valider-imp');
+                    chargement(btnOk, true, 'Enregistrement…');
+                    try {
+                        const payload = {
+                            competition: dernierParse.competition || LIBELLES_DEFAUT[equipeActive].titre,
+                            poule: '',
+                            source: 'import-fff',
+                            maj: new Date().toISOString(),
+                            lignes: dernierParse.lignes
+                        };
+                        await setDoc(doc(db, "saisons", LIBELLES_DEFAUT[equipeActive].docId), payload);
+                        invaliderCache("saisons");
+                        donneesClassement[equipeActive] = payload;
+                        document.getElementById('zone-alerte-api').classList.add('hidden');
+                        afficherClassement();
+                        toast(`Classement enregistré (${payload.lignes.length} équipes) !`);
+                        fermer(true);
+                    } catch (err) {
+                        toast("Erreur : " + err.message, 'error');
+                        chargement(btnOk, false);
+                    }
+                };
+            });
+        });
+    </script>
+</body>
+</html>

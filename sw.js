@@ -1,9 +1,10 @@
 // Service Worker PWA - FC Chalosse (Stale-While-Revalidate pour les ressources statiques, Network-First pour les pages)
-const CACHE_NAME = 'chalosse-v19';
+const CACHE_NAME = 'chalosse-v21';
 const ASSETS = [
     './',
     './index.html',
     './calendrier.html',
+    './classement_equipes.html',
     './effectif.html',
     './stats.html',
     './classement.html',
@@ -18,6 +19,7 @@ const ASSETS = [
     './js/tactique.js',
     './js/fff_import.js',
     './js/fff_parser.js',
+    './js/fff_classement.js',
     './chalosse.webp',
     './manifest.json'
 ];
@@ -43,7 +45,8 @@ self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;
 
-    const estRessourceStatique = /\.(?:css|js|webp|png|jpe?g|svg|json|ico|woff2?)$/i.test(url.pathname);
+    const estDonneeDynamique = url.pathname.includes('/data/');
+    const estRessourceStatique = !estDonneeDynamique && /\.(?:css|js|webp|png|jpe?g|svg|json|ico|woff2?)$/i.test(url.pathname);
 
     if (estRessourceStatique) {
         // Stale-While-Revalidate : réponse instantanée depuis le cache + mise à jour en arrière-plan
