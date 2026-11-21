@@ -4,7 +4,8 @@
 // Équipe 2 : Séniors Départemental 3 (Poule C) & Coupe des Réserves
 
 import { collection, getDocs, addDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { db } from "./firebase.js";
+import { db, estProfilJoueur } from "./firebase.js";
+import { formaterNomPrenomFFF, construireIndexJoueurs, associerJoueurFFF } from "./fff_parser.js";
 
 export const MATCHS_FFF_CHALOSSE = [
     // =========================================================================
@@ -66,15 +67,24 @@ export const MATCHS_FFF_CHALOSSE = [
     { equipe_type: "reserve", date: "2027-05-30", adversaire: "SC St-Pierre-du-Mont 3", score_chalosse: null, score_adversaire: null }
 ];
 
-// Normalise un nom (sans accents, minuscules, espaces nettoyés) pour comparer avec les joueurs déjà créés
-function normaliserNom(str) {
-    return String(str || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+/**
+ * Crée un nouveau joueur dans la collection Firestore `utilisateurs`
+ * à partir d'un nom brut FFF (ex: "10 THIBAUT C.") et renvoie son ID.
+ */
+export async function creerJoueurEffectif({ nomBrut, poste = 'Milieu', numero = null }) {
+    const { prenom, nom } = formaterNomPrenomFFF(nomBrut);
+    if (!prenom) throw new Error("Nom de joueur invalide.");
+    const docData = {
+        prenom,
+        nom,
+        poste: poste || 'Milieu',
+        role: "joueur"
+    };
+    const n = parseInt(numero, 10);
+    if (!isNaN(n) && n >= 1 && n <= 14) docData.numero = n;
+
+    const docRef = await addDoc(collection(db, "utilisateurs"), docData);
+    return docRef.id;
 }
 
 /**
@@ -85,74 +95,42 @@ function normaliserNom(str) {
  */
 export async function resoudreOuCreerJoueursParNom(listeNomsPostes) {
     const snap = await getDocs(collection(db, "utilisateurs"));
-    const joueursExistants = [];
+    const joueursBruts = [];
 
     snap.forEach(d => {
         const data = d.data();
-        if (data.prenom && (data.role === "joueur" || data.role === "admin")) {
-            const prenomNorm = normaliserNom(data.prenom);
-            const nomNorm = normaliserNom(data.nom);
-            joueursExistants.push({
+        if (estProfilJoueur(data)) {
+            joueursBruts.push({
                 id: d.id,
                 prenom: data.prenom,
                 nom: data.nom || '',
                 poste: data.poste || 'Milieu',
-                prenomNorm,
-                nomNorm,
-                complet1: `${prenomNorm} ${nomNorm}`.trim(),
-                complet2: `${nomNorm} ${prenomNorm}`.trim()
+                numero: (data.numero >= 1 && data.numero <= 14) ? Number(data.numero) : null
             });
         }
     });
 
+    let indexJoueurs = construireIndexJoueurs(joueursBruts);
     const idsResultat = [];
 
     for (const item of listeNomsPostes) {
         const brut = String(item.nom || '').trim();
         if (!brut) continue;
         const posteDefaut = item.poste || 'Milieu';
-        const norm = normaliserNom(brut);
 
-        // 1. Recherche dans les joueurs déjà créés (Prénom Nom, Nom Prénom, ou Nom de famille unique)
-        const trouve = joueursExistants.find(j =>
-            j.complet1 === norm ||
-            j.complet2 === norm ||
-            (j.nomNorm && j.nomNorm === norm) ||
-            (j.prenomNorm && !j.nomNorm && j.prenomNorm === norm)
-        );
-
-        if (trouve) {
-            idsResultat.push(trouve.id);
+        const res = associerJoueurFFF(brut, indexJoueurs);
+        if (res.statut === 'anonyme') continue;
+        if (res.candidatId) {
+            idsResultat.push(res.candidatId);
             continue;
         }
 
-        // 2. Si le joueur n'existe pas encore, on le crée dans Firestore
-        const morceaux = brut.split(/\s+/);
-        let prenom = morceaux[0];
-        let nom = morceaux.slice(1).join(' ');
-        prenom = prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
-        if (!nom) nom = "";
+        const { prenom, nom } = formaterNomPrenomFFF(brut);
+        const nouvelId = await creerJoueurEffectif({ nomBrut: brut, poste: posteDefaut });
 
-        const docRef = await addDoc(collection(db, "utilisateurs"), {
-            prenom,
-            nom,
-            poste: posteDefaut,
-            role: "joueur"
-        });
-
-        const prenomNorm = normaliserNom(prenom);
-        const nomNorm = normaliserNom(nom);
-        joueursExistants.push({
-            id: docRef.id,
-            prenom,
-            nom,
-            poste: posteDefaut,
-            prenomNorm,
-            nomNorm,
-            complet1: `${prenomNorm} ${nomNorm}`.trim(),
-            complet2: `${nomNorm} ${prenomNorm}`.trim()
-        });
-        idsResultat.push(docRef.id);
+        joueursBruts.push({ id: nouvelId, prenom, nom, poste: posteDefaut, numero: null });
+        indexJoueurs = construireIndexJoueurs(joueursBruts);
+        idsResultat.push(nouvelId);
     }
 
     return idsResultat;

@@ -1,5 +1,5 @@
 // Service Worker PWA - FC Chalosse (Network-First avec repli sur le cache hors-ligne)
-const CACHE_NAME = 'chalosse-v15';
+const CACHE_NAME = 'chalosse-v16';
 const ASSETS = [
     './',
     './index.html',
@@ -17,6 +17,7 @@ const ASSETS = [
     './js/matchs.js',
     './js/tactique.js',
     './js/fff_import.js',
+    './js/fff_parser.js',
     './chalosse.webp',
     './manifest.json'
 ];
