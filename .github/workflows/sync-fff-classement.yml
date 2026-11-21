@@ -1,7 +1,14 @@
 name: Synchronisation Classements FFF
 
 on:
-  # Exécution automatique après les matchs du week-end et en semaine
+  # Déclenchement immédiat sur la branche de test lors d'une modification du script/workflow
+  push:
+    branches:
+      - import-feuille-fff
+    paths:
+      - '.github/workflows/sync-fff-classement.yml'
+      - 'scripts/sync_fff_classements.mjs'
+  # Exécution automatique après les matchs du week-end et en semaine (actif sur main)
   schedule:
     - cron: '30 21 * * 0' # Dimanche 21h30 UTC (22h30/23h30 Paris)
     - cron: '0 8 * * 1'   # Lundi 08h00 UTC (09h00/10h00 Paris)
