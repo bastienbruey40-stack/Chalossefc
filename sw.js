@@ -1,5 +1,5 @@
 // Service Worker PWA - FC Chalosse (Network-First pour le code HTML/CSS/JS, Stale-While-Revalidate pour les images)
-const CACHE_NAME = 'chalosse-v32';
+const CACHE_NAME = 'chalosse-v33';
 const ASSETS = [
     './',
     './index.html',
@@ -27,8 +27,7 @@ const ASSETS = [
     './js/fff_classement.js',
     './js/fff_ocr.js',
     './js/logos_clubs.js',
-    './chalosse.webp',
-    './manifest.json'
+    './chalosse.webp'
 ];
 
 self.addEventListener('install', (e) => {
@@ -51,6 +50,7 @@ self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;
+    if (url.pathname.endsWith('manifest.json')) return;
 
     const estImageOuPolice = /\.(?:webp|png|jpe?g|svg|ico|woff2?)$/i.test(url.pathname);
 
