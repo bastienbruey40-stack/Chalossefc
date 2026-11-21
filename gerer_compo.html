@@ -44,7 +44,7 @@
                 <div class="toolbar-row" style="margin-bottom: 4px;">
                     <label style="margin: 0;">3. Dispositif tactique</label>
                     <div class="toolbar-actions">
-                        <button type="button" class="btn-chip primary" id="btn-importer-noms" style="font-size:.8rem; padding:6px 11px;">📋 Importer par noms</button>
+                        <button type="button" class="btn-chip primary" id="btn-importer-noms" style="font-size:.8rem; padding:6px 11px;" title="Importer depuis epreuves.fff.fr (Ctrl+A / Ctrl+C) ou une liste de noms">⚽ Importer feuille FFF</button>
                         <button type="button" class="btn-chip" id="btn-vider-compo" style="font-size:.8rem; padding:6px 11px;">🗑️ Vider le terrain</button>
                     </div>
                 </div>
@@ -95,7 +95,8 @@
         import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, obtenirNumeroJoueur, ouvrirFicheJoueur } from "./js/tactique.js";
-        import { resoudreOuCreerJoueursParNom } from "./js/fff_import.js";
+        import { creerJoueurEffectif } from "./js/fff_import.js";
+        import { parserFeuilleFFF, associerJoueurFFF, construireIndexJoueurs, formaterNomPrenomFFF, normaliserNom } from "./js/fff_parser.js";
 
         let equipeActive = 'premiere';
         let matchActifId = null;
@@ -870,62 +871,345 @@
             toast("Composition vidée.");
         });
 
-        // Importer une composition à partir d'une liste de noms (utilise le joueur s'il existe déjà, sinon le crée automatiquement)
-        document.getElementById('btn-importer-noms').addEventListener('click', () => {
-            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
-            ouvrirModal((boite, fermer) => {
-                boite.innerHTML = `
-                    <h3 class="modal-title">📋 Importer une composition par noms</h3>
-                    <p class="modal-text">
-                        Collez les noms des joueurs (1 par ligne ou séparés par des virgules).<br>
-                        <small class="muted">Les 11 premiers seront placés titulaires en <strong>${echapper(dispositifActif)}</strong> (du Gardien aux Attaquants) et les suivants sur le banc. Si un joueur existe déjà, il est réutilisé ; sinon il est créé automatiquement.</small>
-                    </p>
-                    <textarea id="txt-noms-compo" rows="8" style="margin-top:10px; font-size:.9rem;" placeholder="1. Prénom Nom (Gardien)&#10;2. Prénom Nom (Défenseur)&#10;...&#10;12. Prénom Nom (Remplaçant)"></textarea>
-                    <div class="modal-actions">
-                        <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-noms">Annuler</button>
-                        <button type="button" class="btn-modal btn-modal-ok" id="btn-valider-noms">Placer les joueurs</button>
-                    </div>
+        function planifierSlotsTitulaires(lignesTit, selections, config) {
+            const slotParLigne = new Array(lignesTit.length).fill(-1);
+            const slotsReserves = new Set();
+
+            // Passe 1 : priorité au numéro de maillot correspondant au numéro par défaut du poste (1..11)
+            lignesTit.forEach((item, idx) => {
+                if (selections[idx] === '__IGNORE__') return;
+                if (item.numero >= 1 && item.numero <= 11) {
+                    const s = config.postes.findIndex((p, pIdx) => p.num === item.numero && !slotsReserves.has(pIdx));
+                    if (s !== -1) {
+                        slotParLigne[idx] = s;
+                        slotsReserves.add(s);
+                    }
+                }
+            });
+
+            // Passe 2 : catégorie de poste du joueur existant, puis premier slot libre
+            lignesTit.forEach((item, idx) => {
+                if (selections[idx] === '__IGNORE__' || slotParLigne[idx] !== -1) return;
+                const sel = selections[idx];
+                const posteJoueur = sel !== '__CREATE__' ? (joueursMap[sel]?.poste || '') : '';
+                let s = posteJoueur
+                    ? config.postes.findIndex((p, pIdx) => !slotsReserves.has(pIdx) && p.categorie.toLowerCase() === posteJoueur.toLowerCase())
+                    : -1;
+                if (s === -1) s = config.postes.findIndex((_, pIdx) => !slotsReserves.has(pIdx));
+                if (s !== -1) {
+                    slotParLigne[idx] = s;
+                    slotsReserves.add(s);
+                }
+            });
+
+            return slotParLigne;
+        }
+
+        function construireOptionsSelectFFF(item, matchRes, joueursTries) {
+            const { statut, candidatId, candidats } = matchRes;
+            const { prenom, nom } = formaterNomPrenomFFF(item.nom);
+            const nomCree = `${prenom}${nom ? ' ' + nom : ''}`.trim() || item.nom;
+            const idsAmbigus = new Set((candidats || []).map(c => c.id));
+
+            const optCreer = `<option value="__CREATE__"${statut === 'nouveau' ? ' selected' : ''}>➕ Créer « ${echapper(nomCree)} »</option>`;
+            const optIgnorer = `<option value="__IGNORE__"${statut === 'anonyme' ? ' selected' : ''}>— Ignorer cette ligne</option>`;
+
+            if (statut === 'ambigu' && candidats.length > 0) {
+                const ambigusHtml = candidats.map((c, i) =>
+                    `<option value="${echapper(c.id)}"${i === 0 ? ' selected' : ''}>${echapper(c.nomComplet)} (${echapper(c.poste)})</option>`
+                ).join('');
+                const autresHtml = joueursTries
+                    .filter(j => !idsAmbigus.has(j.id))
+                    .map(j => `<option value="${echapper(j.id)}">${echapper(j.nomComplet)} (${echapper(j.poste)})</option>`)
+                    .join('');
+                return `
+                    <optgroup label="Correspondances possibles">${ambigusHtml}</optgroup>
+                    <optgroup label="Autres joueurs">${autresHtml}${optCreer}${optIgnorer}</optgroup>
                 `;
+            }
 
-                boite.querySelector('#btn-annuler-noms').onclick = () => fermer(false);
-                boite.querySelector('#btn-valider-noms').onclick = async () => {
-                    const brut = boite.querySelector('#txt-noms-compo').value;
-                    const lignes = brut
-                        .split(/[\n,;]+/)
-                        .map(l => l.replace(/^\s*\d+[\s.)-]*\s*/, '').replace(/\(.*?\)/g, '').trim())
-                        .filter(Boolean);
+            const preselectId = (statut === 'exact' || statut === 'probable') ? candidatId : null;
+            const joueursHtml = joueursTries.map(j =>
+                `<option value="${echapper(j.id)}"${preselectId === j.id ? ' selected' : ''}>${echapper(j.nomComplet)} (${echapper(j.poste)})</option>`
+            ).join('');
+            return `${optCreer}${optIgnorer}${joueursHtml}`;
+        }
 
-                    if (lignes.length === 0) {
-                        toast("Saisissez au moins un nom de joueur.", 'error');
-                        return;
-                    }
+        // Importer une feuille de match FFF (epreuves.fff.fr Ctrl+A / Ctrl+C) ou une liste de noms avec aperçu
+        document.getElementById('btn-importer-noms').addEventListener('click', () => {
+            if (!matchActifId) {
+                toast("Sélectionnez d'abord un match.", 'info');
+                return;
+            }
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+            let texteMemorise = '';
 
-                    const btnOk = boite.querySelector('#btn-valider-noms');
-                    chargement(btnOk, true, 'Association des joueurs…');
-                    try {
-                        const listeNomsPostes = lignes.map((nom, idx) => ({
-                            nom,
-                            poste: idx < 11 ? (config.postes[idx]?.categorie || 'Milieu') : 'Milieu'
-                        }));
+            ouvrirModal((boite, fermer) => {
+                boite.classList.add('modal-wide');
 
-                        const ids = await resoudreOuCreerJoueursParNom(listeNomsPostes);
-                        await initialiserPage();
+                function afficherEtape1() {
+                    boite.innerHTML = `
+                        <h3 class="modal-title">⚽ Importer une feuille de match FFF</h3>
+                        <p class="modal-text">
+                            <strong>1.</strong> Ouvrez le match sur <strong>epreuves.fff.fr</strong>, faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>.<br>
+                            <strong>2.</strong> Collez ci-dessous (<strong>Ctrl+V</strong>) et cliquez sur <strong>Analyser</strong>.<br>
+                            <small class="muted">Fonctionne aussi avec un copier-coller partiel de la compo ou une simple liste de noms (dispositif actuel : <strong>${echapper(dispositifActif)}</strong>).</small>
+                        </p>
+                        <textarea id="txt-noms-compo" rows="9" style="margin-top:10px; font-size:.88rem;" placeholder="Collez ici toute la page epreuves.fff.fr (Ctrl+A puis Ctrl+C)&#10;ou une simple liste de joueurs…">${echapper(texteMemorise)}</textarea>
+                        <div class="modal-actions">
+                            <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-noms">Annuler</button>
+                            <button type="button" class="btn-modal btn-modal-ok" id="btn-analyser-fff">🔍 Analyser la feuille</button>
+                        </div>
+                    `;
 
-                        titulaires = {};
-                        ids.slice(0, 11).forEach((id, idx) => { titulaires[idx] = id; });
-                        remplacants = ids.slice(11);
-                        numeros = {};
+                    boite.querySelector('#btn-annuler-noms').onclick = () => fermer(false);
+                    boite.querySelector('#btn-analyser-fff').onclick = () => {
+                        const texte = boite.querySelector('#txt-noms-compo').value;
+                        texteMemorise = texte;
+                        const analyse = parserFeuilleFFF(texte);
+                        if (analyse.titulaires.length === 0 && analyse.remplacants.length === 0) {
+                            toast("Aucun joueur détecté. Vérifiez votre copier-coller depuis epreuves.fff.fr ou saisissez un nom par ligne.", 'error', 4500);
+                            return;
+                        }
+                        afficherEtape2(analyse);
+                    };
+                }
 
-                        rafraichirVueTactique();
-                        await sauvegarderCompoAuto();
-                        toast(`${ids.length} joueur(s) placés et enregistrés sur la feuille de match !`);
-                        fermer(true);
-                    } catch (err) {
-                        console.error(err);
-                        toast("Erreur : " + err.message, 'error');
-                        chargement(btnOk, false);
-                    }
-                };
+                function afficherEtape2(analyse) {
+                    const indexJoueurs = construireIndexJoueurs(listeTousLesJoueurs);
+                    const joueursTries = [...listeTousLesJoueurs].sort((a, b) => a.nomComplet.localeCompare(b.nomComplet, 'fr'));
+
+                    const lignes = [
+                        ...analyse.titulaires.map((item, idx) => ({ ...item, role: 'titulaire', ordre: idx })),
+                        ...analyse.remplacants.map((item, idx) => ({ ...item, role: 'remplacant', ordre: idx }))
+                    ].map((item, globalIdx) => {
+                        const matchRes = associerJoueurFFF(item.nom, indexJoueurs);
+                        const evt = analyse.evenements[normaliserNom(item.nom)] || null;
+                        return { ...item, globalIdx, matchRes, evt };
+                    });
+
+                    const nbExact = lignes.filter(l => l.matchRes.statut === 'exact' || l.matchRes.statut === 'probable').length;
+                    const nbAmbigus = lignes.filter(l => l.matchRes.statut === 'ambigu').length;
+                    const nbNouveaux = lignes.filter(l => l.matchRes.statut === 'nouveau').length;
+
+                    let totalButs = 0, totalJaunes = 0, totalRouges = 0;
+                    Object.values(analyse.evenements).forEach(ev => {
+                        totalButs += ev.buts || 0;
+                        totalJaunes += ev.jaunes || 0;
+                        totalRouges += ev.rouges || 0;
+                    });
+                    const aDesEvenements = totalButs + totalJaunes + totalRouges > 0;
+
+                    const LABEL_STATUT = {
+                        exact: { txt: '✓ Trouvé', cls: 'ok' },
+                        probable: { txt: '≈ Probable', cls: 'ok' },
+                        ambigu: { txt: '⚠️ Plusieurs choix', cls: 'warn' },
+                        nouveau: { txt: '➕ Nouveau', cls: 'warn' },
+                        anonyme: { txt: '❓ Anonyme', cls: '' }
+                    };
+
+                    const rendreLignesSection = (listeSection) => listeSection.map(l => {
+                        const info = LABEL_STATUT[l.matchRes.statut] || LABEL_STATUT.nouveau;
+                        const clsRow = ['ambigu', 'nouveau', 'anonyme'].includes(l.matchRes.statut) ? ` ${l.matchRes.statut}` : '';
+                        let badgesEvt = '';
+                        if (l.evt?.buts > 0) badgesEvt += `<span class="tag" style="margin:0;">⚽ ${l.evt.buts}</span>`;
+                        if (l.evt?.jaunes > 0) badgesEvt += `<span class="tag" style="margin:0;">🟨 ${l.evt.jaunes}</span>`;
+                        if (l.evt?.rouges > 0) badgesEvt += `<span class="tag" style="margin:0;">🟥 ${l.evt.rouges}</span>`;
+
+                        return `
+                            <div class="fff-import-row${clsRow}" data-row-idx="${l.globalIdx}">
+                                <div class="fff-import-row-head">
+                                    <div class="fff-import-row-left">
+                                        ${l.numero ? `<span class="bench-num" style="min-width:24px; height:24px; font-size:.74rem;">${echapper(l.numero)}</span>` : ''}
+                                        <strong style="font-size:.88rem;">${echapper(l.nom)}</strong>
+                                        ${badgesEvt}
+                                    </div>
+                                    <span class="cselect-badge ${echapper(info.cls)}" style="font-size:.72rem;">${echapper(info.txt)}</span>
+                                </div>
+                                <select class="fff-import-select" data-select-idx="${l.globalIdx}" aria-label="Associer ${echapper(l.nom)}">
+                                    ${construireOptionsSelectFFF(l, l.matchRes, joueursTries)}
+                                </select>
+                            </div>`;
+                    }).join('');
+
+                    const lignesTit = lignes.filter(l => l.role === 'titulaire');
+                    const lignesRemp = lignes.filter(l => l.role === 'remplacant');
+
+                    const resumeEvtTxt = aDesEvenements
+                        ? [totalButs ? `⚽ ${totalButs}` : '', totalJaunes ? `🟨 ${totalJaunes}` : '', totalRouges ? `🟥 ${totalRouges}` : ''].filter(Boolean).join(' · ')
+                        : '';
+
+                    boite.innerHTML = `
+                        <h3 class="modal-title">👁️ Aperçu de l'import (${analyse.format === 'fff' ? 'Feuille FFF' : 'Liste'})</h3>
+                        <div class="fff-import-summary">
+                            <span class="tag" style="margin:0;">⚽ ${lignesTit.length} titulaire(s)</span>
+                            <span class="tag" style="margin:0;">🪑 ${lignesRemp.length} remplaçant(s)</span>
+                            ${nbExact ? `<span class="cselect-badge ok" style="margin:0;">✓ ${nbExact} trouvé(s)</span>` : ''}
+                            ${nbAmbigus ? `<span class="cselect-badge warn" style="margin:0;">⚠️ ${nbAmbigus} à confirmer</span>` : ''}
+                            ${nbNouveaux ? `<span class="cselect-badge warn" style="margin:0;">➕ ${nbNouveaux} nouveau(x)</span>` : ''}
+                            ${resumeEvtTxt ? `<span class="tag" style="margin:0;">${echapper(resumeEvtTxt)}</span>` : ''}
+                        </div>
+                        <div class="fff-import-list">
+                            ${lignesTit.length ? `<div class="fff-import-section">Titulaires (${lignesTit.length})</div>${rendreLignesSection(lignesTit)}` : ''}
+                            ${lignesRemp.length ? `<div class="fff-import-section">Remplaçants (${lignesRemp.length})</div>${rendreLignesSection(lignesRemp)}` : ''}
+                        </div>
+                        ${aDesEvenements ? `
+                            <label class="fff-import-stats-opt">
+                                <input type="checkbox" id="chk-import-stats" checked>
+                                <span>Importer aussi les buts et cartons détectés dans les stats du match (${echapper(resumeEvtTxt)})</span>
+                            </label>` : ''}
+                        <div class="modal-actions">
+                            <button type="button" class="btn-modal btn-modal-cancel" id="btn-retour-texte">← Modifier le texte</button>
+                            <button type="button" class="btn-modal btn-modal-ok" id="btn-appliquer-fff">✅ Appliquer cette composition</button>
+                        </div>
+                    `;
+
+                    boite.querySelector('#btn-retour-texte').onclick = () => afficherEtape1();
+                    boite.querySelector('#btn-appliquer-fff').onclick = async () => {
+                        const selections = lignes.map(l => boite.querySelector(`[data-select-idx="${l.globalIdx}"]`).value);
+
+                        // Vérifie l'absence de doublons sur les joueurs existants choisis
+                        const idsVus = new Set();
+                        for (const val of selections) {
+                            if (val === '__CREATE__' || val === '__IGNORE__') continue;
+                            if (idsVus.has(val)) {
+                                const jDoublon = joueursMap[val];
+                                toast(`${jDoublon ? jDoublon.nomComplet : 'Un joueur'} est sélectionné plusieurs fois.`, 'error');
+                                return;
+                            }
+                            idsVus.add(val);
+                        }
+
+                        const nbActifs = selections.filter(v => v !== '__IGNORE__').length;
+                        if (nbActifs === 0) {
+                            toast("Tous les joueurs sont ignorés.", 'error');
+                            return;
+                        }
+
+                        const btnOk = boite.querySelector('#btn-appliquer-fff');
+                        chargement(btnOk, true, 'Enregistrement…');
+                        try {
+                            const selTit = selections.slice(0, lignesTit.length);
+                            const slotParLigneTit = planifierSlotsTitulaires(lignesTit, selTit, config);
+
+                            const idsResolus = new Array(lignes.length).fill(null);
+                            const nomNormVersId = new Map();
+                            const nouveauxCreesPourStats = [];
+
+                            for (let i = 0; i < lignes.length; i++) {
+                                const val = selections[i];
+                                if (val === '__IGNORE__') continue;
+                                const l = lignes[i];
+                                let idFinal = val;
+
+                                if (val === '__CREATE__') {
+                                    let posteDefaut = 'Milieu';
+                                    if (l.role === 'titulaire') {
+                                        const sIdx = slotParLigneTit[l.ordre];
+                                        if (sIdx !== -1 && config.postes[sIdx]) posteDefaut = config.postes[sIdx].categorie;
+                                    }
+                                    idFinal = await creerJoueurEffectif({ nomBrut: l.nom, poste: posteDefaut });
+                                    const { prenom, nom } = formaterNomPrenomFFF(l.nom);
+                                    nouveauxCreesPourStats.push({ id: idFinal, prenom, nom, poste: posteDefaut, numero: null });
+                                }
+
+                                idsResolus[i] = idFinal;
+                                nomNormVersId.set(normaliserNom(l.nom), idFinal);
+                            }
+
+                            const nouveauxTitulaires = {};
+                            const nouveauxRemplacants = [];
+                            const nouveauxNumeros = {};
+                            const idsPlaces = new Set();
+
+                            lignesTit.forEach((item, idx) => {
+                                const id = idsResolus[idx];
+                                const sIdx = slotParLigneTit[idx];
+                                if (!id || sIdx === -1 || idsPlaces.has(id)) return;
+                                nouveauxTitulaires[sIdx] = id;
+                                idsPlaces.add(id);
+                                if (item.numero >= 1 && item.numero <= 14) nouveauxNumeros[id] = item.numero;
+                            });
+
+                            lignesRemp.forEach((item, idx) => {
+                                const id = idsResolus[lignesTit.length + idx];
+                                if (!id || idsPlaces.has(id)) return;
+                                nouveauxRemplacants.push(id);
+                                idsPlaces.add(id);
+                                if (item.numero >= 1 && item.numero <= 14) nouveauxNumeros[id] = item.numero;
+                            });
+
+                            const listeCompoPlate = compilerListeCompo(nouveauxTitulaires, nouveauxRemplacants);
+                            const compoTactique = {
+                                dispositif: dispositifActif,
+                                titulaires: nouveauxTitulaires,
+                                remplacants: nouveauxRemplacants,
+                                numeros: nouveauxNumeros
+                            };
+
+                            const payload = {
+                                compo: listeCompoPlate,
+                                compo_tactique: compoTactique
+                            };
+
+                            const chkStats = boite.querySelector('#chk-import-stats');
+                            if (chkStats && chkStats.checked && aDesEvenements) {
+                                const matchActuel = tousLesMatchs.find(m => m.id === matchActifId);
+                                const statsExistantes = matchActuel?.data?.stats_joueurs || {};
+                                const statsFusionnees = {};
+                                for (const [k, v] of Object.entries(statsExistantes)) {
+                                    statsFusionnees[k] = { ...v };
+                                }
+                                const indexPourStats = construireIndexJoueurs([...listeTousLesJoueurs, ...nouveauxCreesPourStats]);
+
+                                for (const [nomCle, ev] of Object.entries(analyse.evenements)) {
+                                    let targetId = nomNormVersId.get(nomCle);
+                                    if (!targetId) {
+                                        const r = associerJoueurFFF(nomCle, indexPourStats);
+                                        if (r.candidatId) targetId = r.candidatId;
+                                    }
+                                    if (!targetId) continue;
+                                    const existant = statsFusionnees[targetId] || {};
+                                    statsFusionnees[targetId] = {
+                                        buts: ev.buts || 0,
+                                        passes: parseInt(existant.passes, 10) || 0,
+                                        jaunes: ev.jaunes || 0,
+                                        rouges: ev.rouges || 0
+                                    };
+                                }
+                                payload.stats_joueurs = statsFusionnees;
+                            }
+
+                            await sauvegardeEnCours;
+                            await updateDoc(doc(db, "matchs", matchActifId), payload);
+
+                            titulaires = nouveauxTitulaires;
+                            remplacants = nouveauxRemplacants;
+                            numeros = nouveauxNumeros;
+
+                            const entree = tousLesMatchs.find(m => m.id === matchActifId);
+                            if (entree) {
+                                entree.data.compo = listeCompoPlate;
+                                entree.data.compo_tactique = compoTactique;
+                                if (payload.stats_joueurs) entree.data.stats_joueurs = payload.stats_joueurs;
+                            }
+
+                            await initialiserPage();
+                            rafraichirVueTactique();
+
+                            const nbTit = Object.keys(titulaires).length;
+                            const infoStats = payload.stats_joueurs && resumeEvtTxt ? ` (${resumeEvtTxt})` : '';
+                            toast(`Composition importée : ${nbTit} titulaire(s), ${remplacants.length} remplaçant(s)${infoStats} !`);
+                            fermer(true);
+                        } catch (err) {
+                            console.error("Erreur d'import feuille FFF :", err);
+                            toast("Erreur : " + err.message, 'error');
+                            chargement(btnOk, false);
+                        }
+                    };
+                }
+
+                afficherEtape1();
             });
         });
 

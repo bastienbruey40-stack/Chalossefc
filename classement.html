@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#111214">
-    <title>FC Chalosse - Classement</title>
+    <title>FC Chalosse - Classement Homme du match</title>
     <link rel="apple-touch-icon" href="chalosse.webp">
     <link rel="icon" href="chalosse.webp">
     <link rel="manifest" href="manifest.json">
@@ -16,12 +16,25 @@
     <main class="container narrow">
         <header class="page-header">
             <h1><img src="chalosse.webp" alt="" class="logo-header"> 🏆 Homme du match</h1>
-            <p>Classement général des joueurs selon leur note moyenne.</p>
+            <p>Classement des joueurs selon leur note moyenne (par match ou cumulé sur la saison).</p>
         </header>
 
         <div class="onglets" role="tablist">
             <a href="stats.html" class="btn-onglet" style="text-align:center; text-decoration:none">📊 Tableau complet</a>
             <a href="classement.html" class="btn-onglet actif" style="text-align:center; text-decoration:none">🏆 Homme du match</a>
+        </div>
+
+        <!-- Sélecteur de portée : Global ou Match spécifique -->
+        <div class="toolbar-row" style="margin-bottom: 12px; align-items: center; gap: 10px;">
+            <div style="flex: 1; min-width: 0;">
+                <div id="picker-match"></div>
+            </div>
+            <span class="count" id="badge-nb-notes" style="white-space: nowrap;">0 note(s)</span>
+        </div>
+
+        <div id="info-match-selectionne" class="hidden" style="margin-bottom: 12px; display: none; align-items: center; justify-content: space-between; gap: 8px; font-size: .85rem; padding: 7px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;">
+            <span id="texte-info-match" class="muted" style="font-weight: 600;"></span>
+            <a id="lien-fiche-match" href="#" class="btn-chip" style="font-size: .76rem; padding: 4px 10px; margin: 0;">📋 Feuille de match</a>
         </div>
 
         <div class="card" id="liste-classement">
@@ -33,58 +46,191 @@
         import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
-        import { toast, confirmer, echapper } from "./js/ui.js";
+        import { toast, confirmer, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { trierParDate } from "./js/matchs.js";
         import { ouvrirFicheJoueur } from "./js/tactique.js";
 
         let estAdmin = false;
+        let matchActifId = 'global';
+        let tousLesMatchs = [];
+        let selectMatch = null;
+        let joueursMap = {};
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
             const profil = await chargerProfil(user.uid).catch(() => null);
             estAdmin = profil?.role === "admin";
-            genererClassement();
+            await initialiserPage();
         });
 
-        async function genererClassement() {
+        async function initialiserPage() {
             try {
-                // 1. Joueurs
+                // 1. Charger les joueurs de l'effectif
                 const joueursSnap = await getDocs(collection(db, "utilisateurs"));
-                const joueurs = {};
+                joueursMap = {};
                 joueursSnap.forEach(d => {
                     const data = d.data();
                     if (estProfilJoueur(data)) {
-                        joueurs[d.id] = { id: d.id, nom: `${data.prenom} ${data.nom || ''}`.trim(), totalNotes: 0, nbNotes: 0, noteDocIds: [] };
+                        joueursMap[d.id] = {
+                            id: d.id,
+                            nom: `${data.prenom || ''} ${data.nom || ''}`.trim()
+                        };
                     }
                 });
 
-                // 2. Notes
+                // 2. Charger les matchs
+                const matchsSnap = await getDocs(collection(db, "matchs"));
+                tousLesMatchs = [];
+                matchsSnap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+                trierParDate(tousLesMatchs);
+                tousLesMatchs.reverse(); // Les matchs récents en haut de la liste
+
+                // Vérifie si un paramètre d'URL demande un match spécifique (?match=ID)
+                const matchUrl = new URLSearchParams(window.location.search).get('match');
+                if (matchUrl && tousLesMatchs.some(m => m.id === matchUrl)) {
+                    matchActifId = matchUrl;
+                }
+
+                // 3. Préparer les options du menu déroulant moderne
+                const options = [
+                    {
+                        value: 'global',
+                        label: 'Toute la saison (Global)',
+                        sub: 'Classement général cumulé',
+                        icon: '🌐'
+                    },
+                    ...tousLesMatchs.map(({ id, data }) => {
+                        const adv = data.adversaire || 'Adversaire';
+                        const eqNom = data.equipe_type === 'reserve' ? 'Équipe Réserve' : 'Équipe 1';
+                        const dot = data.equipe_type === 'reserve' ? 'reserve' : 'premiere';
+                        const dt = data.date ? formaterDate(data.date) : 'Sans date';
+                        const score = (data.score_nous !== undefined && data.score_nous !== '' && data.score_eux !== undefined && data.score_eux !== '')
+                            ? `${data.score_nous} - ${data.score_eux}`
+                            : '';
+                        return {
+                            value: id,
+                            label: `vs ${adv}`,
+                            sub: `${dt} · ${eqNom}`,
+                            dot: dot,
+                            badge: score,
+                            badgeClass: score ? 'ok' : ''
+                        };
+                    })
+                ];
+
+                selectMatch = creerSelectCustom('picker-match', {
+                    placeholder: 'Sélectionner un match ou global…',
+                    iconePlaceholder: '🏆',
+                    options: options,
+                    valeur: matchActifId,
+                    onChange: (val) => {
+                        matchActifId = val;
+                        // Met à jour l'URL sans recharger la page
+                        const url = new URL(window.location);
+                        if (matchActifId === 'global') {
+                            url.searchParams.delete('match');
+                        } else {
+                            url.searchParams.set('match', matchActifId);
+                        }
+                        window.history.replaceState({}, '', url);
+                        genererClassement();
+                    }
+                });
+
+                await genererClassement();
+            } catch (err) {
+                console.error("Erreur d'initialisation :", err);
+                document.getElementById('liste-classement').innerHTML = `<p class="error-text">Erreur de chargement des données.</p>`;
+            }
+        }
+
+        async function genererClassement() {
+            const conteneur = document.getElementById('liste-classement');
+            conteneur.innerHTML = `<div class="skeleton small"></div><div class="skeleton small"></div>`;
+
+            // Bandeau d'information du match sélectionné
+            const bandeauInfo = document.getElementById('info-match-selectionne');
+            if (matchActifId === 'global') {
+                bandeauInfo.classList.add('hidden');
+                bandeauInfo.style.display = 'none';
+            } else {
+                const matchCourant = tousLesMatchs.find(m => m.id === matchActifId);
+                if (matchCourant) {
+                    bandeauInfo.classList.remove('hidden');
+                    bandeauInfo.style.display = 'flex';
+                    const adv = matchCourant.data.adversaire || 'Adversaire';
+                    const dt = matchCourant.data.date ? formaterDate(matchCourant.data.date) : '';
+                    const eq = matchCourant.data.equipe_type === 'reserve' ? 'Équipe Réserve' : 'Équipe Première';
+                    document.getElementById('texte-info-match').textContent = `Match : vs ${adv} (${dt} · ${eq})`;
+                    document.getElementById('lien-fiche-match').href = `match_detail.html?match=${encodeURIComponent(matchActifId)}`;
+                }
+            }
+
+            try {
+                // Prépare les compteurs pour chaque joueur
+                const statsJoueurs = {};
+                for (const id in joueursMap) {
+                    statsJoueurs[id] = {
+                        id,
+                        nom: joueursMap[id].nom,
+                        totalNotes: 0,
+                        nbNotes: 0,
+                        noteDocIds: []
+                    };
+                }
+
+                // Récupération des notes
                 const notesSnap = await getDocs(collection(db, "notes"));
+                let totalVotes = 0;
+
                 notesSnap.forEach(d => {
                     const n = d.data();
-                    const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
-                    if (joueurs[id]) {
-                        joueurs[id].totalNotes += parseFloat(n.note);
-                        joueurs[id].nbNotes += 1;
-                        joueurs[id].noteDocIds.push(d.id);
+                    const parts = d.id.split('_');
+                    const mId = parts[0] || n.matchId || n.match_id;
+                    const jId = parts[1] || n.joueurId || n.joueur_id;
+
+                    if (matchActifId !== 'global' && mId !== matchActifId) {
+                        return;
                     }
+
+                    const val = parseFloat(n.note);
+                    if (isNaN(val)) return;
+
+                    totalVotes++;
+                    if (!statsJoueurs[jId]) {
+                        statsJoueurs[jId] = {
+                            id: jId,
+                            nom: 'Joueur inconnu',
+                            totalNotes: 0,
+                            nbNotes: 0,
+                            noteDocIds: []
+                        };
+                    }
+                    statsJoueurs[jId].totalNotes += val;
+                    statsJoueurs[jId].nbNotes += 1;
+                    statsJoueurs[jId].noteDocIds.push(d.id);
                 });
 
-                // 3. Moyennes triées
-                const classement = Object.values(joueurs)
+                document.getElementById('badge-nb-notes').textContent = `${totalVotes} note${totalVotes > 1 ? 's' : ''}`;
+
+                // Tri par note moyenne décroissante
+                const classement = Object.values(statsJoueurs)
                     .filter(j => j.nbNotes > 0)
                     .map(j => ({ ...j, moyenne: (j.totalNotes / j.nbNotes).toFixed(1) }))
                     .sort((a, b) => b.moyenne - a.moyenne);
 
-                // 4. Affichage
-                const conteneur = document.getElementById('liste-classement');
                 if (classement.length === 0) {
-                    conteneur.innerHTML = `<p class="muted" style="text-align:center; margin:0">Aucune note enregistrée pour le moment.</p>`;
+                    const msg = matchActifId === 'global'
+                        ? 'Aucune note enregistrée sur la saison pour le moment.'
+                        : 'Aucune note enregistrée pour ce match.';
+                    conteneur.innerHTML = `<p class="muted" style="text-align:center; margin:0">${msg}</p>`;
                     return;
                 }
+
                 conteneur.innerHTML = classement.map((j, i) => {
                     const medaille = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
                     const btnAdmin = estAdmin
-                        ? `<button type="button" class="btn-supprimer btn-suppr-notes" data-id="${j.id}" data-nom="${echapper(j.nom)}"
+                        ? `<button type="button" class="btn-supprimer btn-suppr-notes" data-id="${j.id}" data-nom="${echapper(j.nom)}" data-docs='${JSON.stringify(j.noteDocIds)}'
                                    style="width:32px; height:32px; font-size:.82rem; margin-left:8px"
                                    title="Supprimer les notes de ${echapper(j.nom)}">🗑️</button>`
                         : '';
@@ -92,14 +238,14 @@
                         <div class="classement-ligne ${i === 0 ? 'podium-1' : ''}">
                             <span data-joueur-id="${j.id}" style="cursor:pointer" title="Voir la fiche de ${echapper(j.nom)}"><span class="rang-joueur">${medaille}</span> ${echapper(j.nom)}</span>
                             <div style="display:flex; align-items:center;">
-                                <span class="note-badge">${j.moyenne} / 10</span>
+                                <span class="note-badge">${j.moyenne} / 10 <small style="font-size:.7rem; opacity:.85; font-weight:normal;">(${j.nbNotes} avis)</small></span>
                                 ${btnAdmin}
                             </div>
                         </div>`;
                 }).join('');
             } catch (err) {
                 console.error(err);
-                document.getElementById('liste-classement').innerHTML = `<p class="error-text">Erreur de chargement.</p>`;
+                conteneur.innerHTML = `<p class="error-text">Erreur lors du calcul du classement.</p>`;
             }
         }
 
@@ -110,21 +256,27 @@
                 if (spanJoueur) ouvrirFicheJoueur(spanJoueur.dataset.joueurId);
                 return;
             }
-            const joueurId = btn.dataset.id;
-            const nom = btn.dataset.nom;
-            const ok = await confirmer(`Supprimer toutes les notes reçues par ${nom} ?`, {
-                titre: 'Supprimer ces notes ?', ok: 'Supprimer', danger: true
+            const nom = btn.dataset.nom || 'ce joueur';
+            const docsASupprimer = JSON.parse(btn.dataset.docs || '[]');
+
+            if (docsASupprimer.length === 0) {
+                toast("Aucune note à supprimer.", 'info');
+                return;
+            }
+
+            const question = matchActifId === 'global'
+                ? `Supprimer toutes les notes reçues par ${nom} sur l'ensemble de la saison (${docsASupprimer.length} note(s)) ?`
+                : `Supprimer les notes reçues par ${nom} sur ce match (${docsASupprimer.length} note(s)) ?`;
+
+            const ok = await confirmer(question, {
+                titre: 'Supprimer ces notes ?',
+                ok: 'Supprimer',
+                danger: true
             });
             if (!ok) return;
+
             try {
-                const notesSnap = await getDocs(collection(db, "notes"));
-                const promesses = [];
-                notesSnap.forEach(d => {
-                    const n = d.data();
-                    const id = n.joueur_id || n.joueurId || d.id.split('_')[1];
-                    if (id === joueurId) promesses.push(deleteDoc(doc(db, "notes", d.id)));
-                });
-                await Promise.all(promesses);
+                await Promise.all(docsASupprimer.map(id => deleteDoc(doc(db, "notes", id))));
                 toast(`Notes de ${nom} supprimées.`);
                 genererClassement();
             } catch (err) {
