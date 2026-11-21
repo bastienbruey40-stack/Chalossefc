@@ -187,8 +187,48 @@ export async function recupererClassementsViaApiFFF() {
 }
 
 /**
+ * Applique une vérification/auto-correction mathématique légère sur une ligne de classement
+ * (utile surtout après OCR d'une capture d'écran).
+ * Invariants foot : G + N + P = J ; Pts = 3*G + N + P/Bo ; Diff = Bp - Bc.
+ */
+export function corrigerLigneMathematiquement(ligne, { depuisOcr = false } = {}) {
+    if (!ligne) return ligne;
+    const res = { ...ligne };
+
+    if (depuisOcr) {
+        // 1. Si G + N + P = J et P/Bo = 0 et F = 0, vérifie Pts = 3*G + N
+        if (res.gagnes >= 0 && res.nuls >= 0 && res.perdus >= 0 && res.gagnes + res.nuls + res.perdus === res.joues && res.joues > 0) {
+            const ptsAttendu = res.gagnes * 3 + res.nuls;
+            if ((res.forfaits || 0) === 0 && res.points !== ptsAttendu) {
+                // Si la différence ressemble à un chiffre avalé par l'OCR (ex: 13 lu 3 ou 8, 10 lu 0)
+                if (res.points < 0 || Math.abs(res.points - ptsAttendu) >= 3) {
+                    res.points = ptsAttendu;
+                }
+            }
+        }
+        // 2. Toujours recalculer Diff = Bp - Bc si incohérent (rattrape les signes "-" manqués ex: 5 au lieu de -5)
+        if (res.bp >= 0 && res.bc >= 0 && res.bp - res.bc !== res.diff) {
+            res.diff = res.bp - res.bc;
+        }
+    }
+
+    return res;
+}
+
+const MOTS_BRUIT_CLASSEMENT = new Set([
+    'UNDEFINED', 'NULL', 'LOGO', 'IMAGE', 'IMG', 'PR', 'PR.', 'EQUIPE', 'EQUIPES',
+    'CLUB', 'PTS', 'J', 'J.', 'G', 'G.', 'N', 'N.', 'P', 'P.', 'F', 'F.',
+    'P/BO', 'P/BO.', 'BP', 'BP.', 'BC', 'BC.', 'DIFF', 'DIFF.', 'SERIE EN COURS',
+    'CLASSEMENT', 'JOURNEE'
+]);
+
+/**
  * Parse un copier-coller (Ctrl+A / Ctrl+C) de la page Classement de epreuves.fff.fr ou fff.fr.
- * Gère aussi bien les lignes tabulées qu'un format multi-lignes (une cellule par ligne).
+ * Gère tous les formats de navigateurs :
+ * - Format hybride epreuves.fff.fr (rang sur 1 ligne, "undefined", nom sur 1 ligne, 10 chiffres tabulés sur 1 ligne)
+ * - Format tabulé (1 ligne par équipe)
+ * - Format multi-lignes (1 cellule par ligne)
+ * - Liens Markdown [NOM](https://...)
  */
 export function parserClassementFFF(texteBrut) {
     if (!texteBrut || !String(texteBrut).trim()) {
@@ -198,8 +238,13 @@ export function parserClassementFFF(texteBrut) {
     const rawLines = String(texteBrut)
         .replace(/\r/g, '\n')
         .split('\n')
-        .map(l => l.trim())
-        .filter(Boolean);
+        .map(l => l.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, '$1').trim())
+        .filter(l => {
+            if (!l) return false;
+            const u = normaliser(l);
+            if (u === 'UNDEFINED' || u === 'NULL') return false;
+            return true;
+        });
 
     // Détecte éventuellement le titre de la compétition
     let competition = '';
@@ -211,69 +256,88 @@ export function parserClassementFFF(texteBrut) {
         }
     }
 
-    const lignes = [];
+    const estCelluleProgression = (s) => /^[↑↓▲▼+-]?\s*\d{1,2}$/.test(s) || /^[↑↓▲▼=–-]$/.test(s);
+    const estCelluleNombre = (s) => /^[+-]?\d{1,3}$/.test(s);
+    const estNomEquipeValide = (s) => {
+        if (!s || s.length < 2) return false;
+        if (estCelluleNombre(s)) return false;
+        if (!/[A-Za-zÀ-ÿ]{2,}/.test(s)) return false;
+        const u = normaliser(s);
+        if (MOTS_BRUIT_CLASSEMENT.has(u)) return false;
+        if (u.startsWith('CLASSEMENT SOUS RESERVE')) return false;
+        return true;
+    };
 
-    // 1. Tentative format tabulé ou une ligne par équipe :
-    // Ex: "1\tCHALOSSE FC LAUREDE\t24\t10\t7\t3\t0\t0\t25\t10\t+15"
-    // ou  "1 CHALOSSE FC LAUREDE 24 10 7 3 0 25 10 15"
-    const regexLigneComplete = /^(\d{1,2})\s+([^\d\t][^\t]*?|\S[\s\S]*?)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)(?:\s+(\d+))?\s+(\d+)\s+(\d+)\s+([+-]?\d+)$/;
-
+    // 1. Passe "1 ligne par équipe" (séparée par espaces ou tabulations complètes)
+    const lignesMono = [];
     for (const l of rawLines) {
-        // Cas séparé par tabulations
-        if (l.includes('\t')) {
-            const cols = l.split('\t').map(c => c.trim()).filter(c => c !== '');
-            if (cols.length >= 9 && /^\d{1,2}$/.test(cols[0])) {
-                const rang = parseInt(cols[0], 10);
-                const equipe = cols[1];
-                const nums = cols.slice(2).map(c => parseInt(c.replace('+', ''), 10));
-                if (nums.every(n => !isNaN(n))) {
-                    // Format FFF standard : Pts, J, G, N, P, [F], BP, BC, [Pén], Diff
-                    const parsed = mapNombresClassement(rang, equipe, nums);
-                    if (parsed) {
-                        lignes.push(parsed);
-                        continue;
-                    }
-                }
+        const mLigne = l.match(/^(\d{1,2})[\t ]+(?:[↑↓▲▼+-]?\s*\d{1,2}[\t ]+)?(?:undefined[\t ]+)?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\s.'-]{1,50}?)[\t ]+((?:[+-]?\d{1,3}[\t ]+){6,9}[+-]?\d{1,3})(?:[\t ]+.*)?$/i);
+        if (mLigne) {
+            const rang = parseInt(mLigne[1], 10);
+            const equipe = mLigne[2].trim();
+            if (rang >= 1 && rang <= 24 && estNomEquipeValide(equipe)) {
+                const nums = mLigne[3].trim().split(/[\t ]+/).map(v => parseInt(v.replace('+', ''), 10));
+                const parsed = mapNombresClassement(rang, equipe, nums);
+                if (parsed) lignesMono.push(parsed);
             }
         }
+    }
 
-        const m = l.match(regexLigneComplete);
-        if (m) {
-            const rang = parseInt(m[1], 10);
-            const equipe = m[2].trim();
-            const nums = [m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11]]
-                .filter(v => v !== undefined)
-                .map(v => parseInt(v.replace('+', ''), 10));
-            const parsed = mapNombresClassement(rang, equipe, nums);
-            if (parsed) lignes.push(parsed);
+    if (lignesMono.length >= 3) {
+        return { lignes: dedupEtTrier(lignesMono), competition };
+    }
+
+    // 2. Passe unifiée par jetons (gère à la fois le format hybride exact de epreuves.fff.fr
+    //    "11 \n undefined \n HAGETMAU FC 2 \n 1\t7\t0\t1\t6\t0\t0\t6\t23\t-17"
+    //    ET le format 100% tabulé ET le format 100% multi-lignes !)
+    const tokens = [];
+    for (const l of rawLines) {
+        const parts = l.split('\t').map(p => p.trim()).filter(Boolean);
+        for (const part of parts) {
+            const uPart = normaliser(part);
+            if (uPart === 'UNDEFINED' || uPart === 'NULL') continue;
+
+            // Si un morceau ne contient QUE des nombres séparés par des espaces (ex: "1 7 0 1 6 0 0 6 23 -17" ou "4 1"),
+            // on l'éclate en nombres individuels.
+            if (/^[+-]?\d{1,3}(?:\s+[+-]?\d{1,3})+$/.test(part)) {
+                part.split(/\s+/).forEach(n => tokens.push(n));
+            } else {
+                tokens.push(part);
+            }
         }
     }
 
-    if (lignes.length >= 3) {
-        return { lignes: dedupEtTrier(lignes), competition };
-    }
-
-    // 2. Tentative format multi-lignes (Edge / Chrome copie parfois chaque cellule sur une ligne séparée)
-    // Motif : ligne "rang" (1..20) -> ligne "nom d'équipe" (avec lettres) -> 7 à 10 lignes numériques
-    const multi = [];
-    for (let i = 0; i < rawLines.length - 8; i++) {
-        if (!/^\d{1,2}$/.test(rawLines[i])) continue;
-        const rang = parseInt(rawLines[i], 10);
+    const unifie = [];
+    for (let i = 0; i < tokens.length - 8; i++) {
+        if (!/^\d{1,2}$/.test(tokens[i])) continue;
+        const rang = parseInt(tokens[i], 10);
         if (rang < 1 || rang > 24) continue;
 
-        const nomCandidat = rawLines[i + 1];
-        if (!nomCandidat || /^\d+$/.test(nomCandidat) || nomCandidat.length < 3) continue;
-        const uNom = normaliser(nomCandidat);
-        if (['PTS', 'EQUIPE', 'CLUB', 'CLASSEMENT', 'JOURNEE'].includes(uNom)) continue;
+        let idxNom = i + 1;
+        // Saute jusqu'à 2 jetons optionnels de progression "Pr." (ex: "↑", "1", "↓ 3", "-")
+        let sauts = 0;
+        while (sauts < 2 && tokens[idxNom] && estCelluleProgression(tokens[idxNom]) && tokens[idxNom + 1]) {
+            idxNom++;
+            sauts++;
+        }
+
+        const nomCandidat = tokens[idxNom];
+        if (!estNomEquipeValide(nomCandidat)) continue;
 
         const nums = [];
-        let j = i + 2;
-        while (j < rawLines.length && nums.length < 10 && /^[+-]?\d{1,3}$/.test(rawLines[j])) {
-            const valNum = parseInt(rawLines[j].replace('+', ''), 10);
-            const suivant = rawLines[j + 1];
-            if (nums.length >= 7 && valNum === rang + 1 && suivant && !/^[+-]?\d+$/.test(suivant) && suivant.length >= 3) {
-                break;
-            }
+        let j = idxNom + 1;
+        while (j < tokens.length && nums.length < 10 && estCelluleNombre(tokens[j])) {
+            const valNum = parseInt(tokens[j].replace('+', ''), 10);
+            const suivant = tokens[j + 1];
+            const suivant2 = tokens[j + 2];
+            const ressembleAuRangSuivant =
+                nums.length >= 7 &&
+                valNum === rang + 1 &&
+                (
+                    (suivant && estNomEquipeValide(suivant)) ||
+                    (suivant && estCelluleProgression(suivant) && suivant2 && estNomEquipeValide(suivant2))
+                );
+            if (ressembleAuRangSuivant) break;
             nums.push(valNum);
             j++;
         }
@@ -281,21 +345,22 @@ export function parserClassementFFF(texteBrut) {
         if (nums.length >= 7) {
             const parsed = mapNombresClassement(rang, nomCandidat, nums);
             if (parsed) {
-                multi.push(parsed);
+                unifie.push(parsed);
                 i = j - 1;
             }
         }
     }
 
-    return { lignes: dedupEtTrier(multi), competition };
+    return { lignes: dedupEtTrier(unifie), competition };
 }
 
-function mapNombresClassement(rang, equipe, nums) {
+export function mapNombresClassement(rang, equipe, nums) {
     if (!equipe || nums.length < 7) return null;
-    // Formats FFF courants :
-    // 8 nombres : Pts, J, G, N, P, BP, BC, Diff
-    // 9 nombres : Pts, J, G, N, P, F, BP, BC, Diff
-    // 10 nombres : Pts, J, G, N, P, F, BP, BC, Pén, Diff
+    // Formats FFF officiels :
+    // 10 nombres (epreuves.fff.fr actuel) : Pts, J, G, N, P, F, P/Bo, Bp, Bc, Diff
+    //  9 nombres                          : Pts, J, G, N, P, F, Bp, Bc, Diff
+    //  8 nombres                          : Pts, J, G, N, P, Bp, Bc, Diff
+    //  7 nombres                          : Pts, J, G, N, P, Bp, Bc
     const points = nums[0];
     const joues = nums[1];
     const gagnes = nums[2];
@@ -303,24 +368,24 @@ function mapNombresClassement(rang, equipe, nums) {
     const perdus = nums[4];
 
     let forfaits = 0, bp = 0, bc = 0, diff = 0;
-    if (nums.length === 7) {
-        bp = nums[5];
-        bc = nums[6];
-        diff = bp - bc;
-    } else if (nums.length === 8) {
-        bp = nums[5];
-        bc = nums[6];
-        diff = nums[7];
+    if (nums.length >= 10) {
+        forfaits = nums[5];
+        bp = nums[7];
+        bc = nums[8];
+        diff = nums[9];
     } else if (nums.length === 9) {
         forfaits = nums[5];
         bp = nums[6];
         bc = nums[7];
         diff = nums[8];
+    } else if (nums.length === 8) {
+        bp = nums[5];
+        bc = nums[6];
+        diff = nums[7];
     } else {
-        forfaits = nums[5];
-        bp = nums[6];
-        bc = nums[7];
-        diff = nums[nums.length - 1];
+        bp = nums[5];
+        bc = nums[6];
+        diff = bp - bc;
     }
 
     return {

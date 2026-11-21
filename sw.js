@@ -1,5 +1,5 @@
 // Service Worker PWA - FC Chalosse (Stale-While-Revalidate pour les ressources statiques, Network-First pour les pages)
-const CACHE_NAME = 'chalosse-v21';
+const CACHE_NAME = 'chalosse-v26';
 const ASSETS = [
     './',
     './index.html',
@@ -20,6 +20,7 @@ const ASSETS = [
     './js/fff_import.js',
     './js/fff_parser.js',
     './js/fff_classement.js',
+    './js/fff_ocr.js',
     './chalosse.webp',
     './manifest.json'
 ];

@@ -29,13 +29,10 @@
                 Chargement du classement…
             </div>
             <div class="toolbar-actions">
-                <button type="button" class="btn-chip primary" id="btn-sync-api">🔄 Actualiser (API FFF)</button>
-                <button type="button" class="btn-chip hidden" id="btn-import-manuel">📋 Coller depuis FFF</button>
+                <button type="button" class="btn-chip primary hidden" id="btn-import-manuel">📋 Mettre à jour depuis FFF</button>
                 <a href="https://epreuves.fff.fr/club/529258" target="_blank" rel="noopener" class="btn-chip">🌐 Site FFF</a>
             </div>
         </div>
-
-        <div id="zone-alerte-api" class="card hidden" style="margin-bottom: 14px; border-color: var(--orange); background: var(--orange-doux); padding: 12px 14px; font-size: .86rem;"></div>
 
         <div class="table-wrap">
             <table>
@@ -69,7 +66,8 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil, lireDoc, invaliderCache } from "./js/firebase.js";
         import { toast, ouvrirModal, chargement, echapper } from "./js/ui.js";
-        import { recupererClassementsViaApiFFF, parserClassementFFF, URL_FFF_CLUB } from "./js/fff_classement.js";
+        import { parserClassementFFF, estEquipeChalosse, URL_FFF_CLUB } from "./js/fff_classement.js";
+        import { lireClassementDepuisImage } from "./js/fff_ocr.js";
 
         const LIBELLES_DEFAUT = {
             premiere: { titre: 'Séniors Départemental 2 · Poule A', docId: 'classement_premiere' },
@@ -80,34 +78,12 @@
         let equipeActive = 'premiere';
         const donneesClassement = { premiere: null, reserve: null };
 
-        function choisirPlusRecent(a, b) {
-            const aOk = a && Array.isArray(a.lignes) && a.lignes.length > 0;
-            const bOk = b && Array.isArray(b.lignes) && b.lignes.length > 0;
-            if (!aOk && !bOk) return null;
-            if (aOk && !bOk) return a;
-            if (!aOk && bOk) return b;
-            const tA = a.maj ? new Date(a.maj).getTime() : 0;
-            const tB = b.maj ? new Date(b.maj).getTime() : 0;
-            return tB > tA ? b : a;
-        }
-
-        async function chargerJsonBot() {
-            try {
-                const resp = await fetch('./data/classements_fff.json', { cache: 'no-cache' });
-                if (!resp.ok) return null;
-                return await resp.json();
-            } catch {
-                return null;
-            }
-        }
-
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
 
-            // Charge en parallèle le profil, le fichier synchronisé par GitHub Actions et Firestore
-            const [profil, jsonBot, docPremiere, docReserve] = await Promise.all([
+            // Charge en parallèle le profil et les classements sauvegardés dans Firestore
+            const [profil, docPremiere, docReserve] = await Promise.all([
                 chargerProfil(user.uid).catch(() => null),
-                chargerJsonBot(),
                 lireDoc("saisons", LIBELLES_DEFAUT.premiere.docId).catch(() => null),
                 lireDoc("saisons", LIBELLES_DEFAUT.reserve.docId).catch(() => null)
             ]);
@@ -117,8 +93,8 @@
                 document.getElementById('btn-import-manuel').classList.remove('hidden');
             }
 
-            donneesClassement.premiere = choisirPlusRecent(jsonBot?.premiere, docPremiere?.data);
-            donneesClassement.reserve = choisirPlusRecent(jsonBot?.reserve, docReserve?.data);
+            if (docPremiere?.data?.lignes?.length) donneesClassement.premiere = docPremiere.data;
+            if (docReserve?.data?.lignes?.length) donneesClassement.reserve = docReserve.data;
 
             afficherClassement();
         });
@@ -139,8 +115,8 @@
             if (!data || !Array.isArray(data.lignes) || data.lignes.length === 0) {
                 badge.textContent = meta.titre;
                 const aideAdmin = estAdmin
-                    ? `<br><span class="muted" style="font-size:.82rem;">Utilisez « 🔄 Actualiser (API FFF) » ou « 📋 Coller depuis FFF » pour enregistrer le classement.</span>`
-                    : `<br><span class="muted" style="font-size:.82rem;">Cliquez sur « 🔄 Actualiser (API FFF) » ou consultez le site officiel FFF.</span>`;
+                    ? `<br><span class="muted" style="font-size:.82rem;">Cliquez sur « 📋 Mettre à jour depuis FFF » (Ctrl+A / Ctrl+C sur epreuves.fff.fr) pour enregistrer le classement.</span>`
+                    : `<br><span class="muted" style="font-size:.82rem;">Le classement sera bientôt mis à jour par un administrateur. Vous pouvez le consulter sur le site officiel FFF.</span>`;
                 corps.innerHTML = `<tr><td colspan="10" style="padding:24px 12px; text-align:center;">Aucun classement enregistré pour l'instant pour cette équipe.${aideAdmin}</td></tr>`;
                 return;
             }
@@ -176,55 +152,6 @@
             }).join('');
         }
 
-        async function sauvegarderClassementFirestore(cleEquipe, data) {
-            if (!estAdmin || !data || !data.lignes?.length) return;
-            try {
-                await setDoc(doc(db, "saisons", LIBELLES_DEFAUT[cleEquipe].docId), data);
-                invaliderCache("saisons");
-            } catch (e) {
-                console.warn("Impossible de sauvegarder le classement dans Firestore :", e);
-            }
-        }
-
-        async function synchroniserApiFFF({ silencieux = false } = {}) {
-            const btn = document.getElementById('btn-sync-api');
-            const alerte = document.getElementById('zone-alerte-api');
-            if (!silencieux) chargement(btn, true, 'Appel API FFF…');
-
-            try {
-                const res = await recupererClassementsViaApiFFF();
-                alerte.classList.add('hidden');
-
-                let majCount = 0;
-                if (res.premiere?.lignes?.length) {
-                    donneesClassement.premiere = res.premiere;
-                    majCount++;
-                    sauvegarderClassementFirestore('premiere', res.premiere);
-                }
-                if (res.reserve?.lignes?.length) {
-                    donneesClassement.reserve = res.reserve;
-                    majCount++;
-                    sauvegarderClassementFirestore('reserve', res.reserve);
-                }
-
-                afficherClassement();
-                if (!silencieux) {
-                    toast(majCount > 0 ? `Classement FFF actualisé (${majCount} équipe(s)) !` : "Aucune donnée retournée par l'API FFF.", majCount > 0 ? 'success' : 'info');
-                }
-            } catch (err) {
-                console.warn("API FFF indisponible depuis le navigateur :", err);
-                if (!silencieux || !donneesClassement[equipeActive]) {
-                    const msgAction = estAdmin
-                        ? `Vous pouvez mettre à jour le tableau en 2 secondes avec le bouton <strong>« 📋 Coller depuis FFF »</strong> (Ctrl+A / Ctrl+C sur la page Classement de <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>).`
-                        : `Un administrateur peut actualiser le tableau depuis <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>.`;
-                    alerte.innerHTML = `<strong>⚠️ L'API directe de la FFF bloque l'accès navigateur (CORS / sécurité FFF).</strong><br>${msgAction}`;
-                    alerte.classList.remove('hidden');
-                }
-            } finally {
-                if (!silencieux) chargement(btn, false);
-            }
-        }
-
         // Changement d'onglet Équipe Première / Équipe Réserve
         document.querySelectorAll('[data-equipe]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -234,11 +161,7 @@
             });
         });
 
-        document.getElementById('btn-sync-api').addEventListener('click', () => {
-            synchroniserApiFFF({ silencieux: false });
-        });
-
-        // Modale admin : mise à jour par copier-coller depuis epreuves.fff.fr
+        // Modale admin : mise à jour par copier-coller texte OU par capture d'écran (OCR haute précision par colonnes)
         document.getElementById('btn-import-manuel').addEventListener('click', () => {
             const labelEquipe = equipeActive === 'premiere' ? 'Équipe Première (D2 · Poule A)' : 'Équipe Réserve (D3 · Poule C)';
             ouvrirModal((boite, fermer) => {
@@ -246,10 +169,17 @@
                 boite.innerHTML = `
                     <h3 class="modal-title">📋 Importer le classement · ${echapper(labelEquipe)}</h3>
                     <p class="modal-text">
-                        <strong>1.</strong> Ouvrez la page <strong>Classement</strong> de l'équipe sur <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>.<br>
-                        <strong>2.</strong> Faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>, puis collez ci-dessous (<strong>Ctrl+V</strong>).
+                        <strong>Option 1 (instantané) :</strong> sur <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>, faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>, et collez ci-dessous (<strong>Ctrl+V</strong>).<br>
+                        <strong>Option 2 (capture d'écran) :</strong> cliquez sur <strong>📸 Capture d'écran</strong> ou collez directement votre capture avec <strong>Ctrl+V</strong>.
                     </p>
-                    <textarea id="txt-classement-fff" rows="9" style="margin-top:8px; font-size:.86rem;" placeholder="Collez ici le tableau de classement copié depuis epreuves.fff.fr…"></textarea>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 10px 0 6px;">
+                        <label for="input-img-classement" class="btn-chip" style="cursor:pointer; margin:0;">
+                            📸 Choisir une capture d'écran
+                        </label>
+                        <input type="file" id="input-img-classement" accept="image/*" class="hidden">
+                        <span id="statut-ocr" class="muted" style="font-size:.8rem;"></span>
+                    </div>
+                    <textarea id="txt-classement-fff" rows="6" style="margin-top:4px; font-size:.84rem;" placeholder="Collez ici le texte copié depuis epreuves.fff.fr (Ctrl+V)&#10;ou collez directement une capture d'écran (Ctrl+V)…"></textarea>
                     <div id="apercu-parse-classement" class="muted" style="font-size:.82rem; margin-top:8px;"></div>
                     <div class="modal-actions">
                         <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-imp">Annuler</button>
@@ -259,24 +189,142 @@
 
                 const txt = boite.querySelector('#txt-classement-fff');
                 const apercu = boite.querySelector('#apercu-parse-classement');
-                let dernierParse = { lignes: [], competition: '' };
+                const inputImg = boite.querySelector('#input-img-classement');
+                const statutOcr = boite.querySelector('#statut-ocr');
+                let lignesCourantes = [];
+                let competitionDetectee = '';
 
-                txt.addEventListener('input', () => {
-                    dernierParse = parserClassementFFF(txt.value);
-                    if (dernierParse.lignes.length > 0) {
-                        const ch = dernierParse.lignes.find(l => l.estChalosse);
-                        apercu.innerHTML = `<span style="color:var(--vert); font-weight:700;">✅ ${dernierParse.lignes.length} équipes détectées</span>${ch ? ` · Chalosse détecté <strong>${ch.rang}e (${ch.points} pts)</strong>` : ''}`;
-                    } else if (txt.value.trim().length > 10) {
-                        apercu.innerHTML = `<span style="color:var(--orange);">⚠️ Aucune ligne de classement reconnue pour l'instant.</span>`;
+                function rendreApercuEditable() {
+                    if (lignesCourantes.length === 0) {
+                        if (txt.value.trim().length > 10) {
+                            apercu.innerHTML = `<span style="color:var(--orange);">⚠️ Aucune ligne de classement reconnue pour l'instant.</span>`;
+                        } else {
+                            apercu.textContent = '';
+                        }
+                        return;
+                    }
+
+                    const ch = lignesCourantes.find(l => l.estChalosse);
+                    const miniRows = lignesCourantes.map((l, idx) => `
+                        <tr data-edit-idx="${idx}" style="${l.estChalosse ? 'background:var(--jaune-doux);' : ''}">
+                            <td style="text-align:center; font-weight:800; padding:4px;">${l.rang}</td>
+                            <td style="padding:3px;"><input type="text" data-field="equipe" value="${echapper(l.equipe)}" style="width:100%; min-width:130px; padding:4px 6px; font-size:.78rem; font-weight:${l.estChalosse ? '800' : '600'};"></td>
+                            <td style="padding:3px;"><input type="number" data-field="points" value="${l.points}" style="width:46px; padding:4px 3px; text-align:center; font-size:.78rem; font-weight:800;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="joues" value="${l.joues}" style="width:40px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="gagnes" value="${l.gagnes}" style="width:38px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="nuls" value="${l.nuls}" style="width:38px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="perdus" value="${l.perdus}" style="width:38px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="bp" value="${l.bp}" style="width:42px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="padding:3px;"><input type="number" data-field="bc" value="${l.bc}" style="width:42px; padding:4px 3px; text-align:center; font-size:.78rem;"></td>
+                            <td style="text-align:center; font-weight:700; padding:4px; font-size:.78rem;" data-diff-cell="${idx}">${l.diff > 0 ? '+' + l.diff : l.diff}</td>
+                        </tr>
+                    `).join('');
+
+                    apercu.innerHTML = `
+                        <div style="color:var(--vert); font-weight:700; margin-bottom:6px;">
+                            ✅ ${lignesCourantes.length} équipe(s) détectée(s)${ch ? ` · Chalosse : ${ch.rang}e (${ch.points} pts)` : ''}
+                            <small class="muted" style="font-weight:500;"> · Vous pouvez corriger une case si besoin avant d'enregistrer.</small>
+                        </div>
+                        <div style="max-height:220px; overflow:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface-2);">
+                            <table style="width:100%; border-collapse:collapse; font-size:.76rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="padding:5px 4px;">#</th>
+                                        <th style="padding:5px 4px; text-align:left;">Équipe</th>
+                                        <th style="padding:5px 3px;">Pts</th>
+                                        <th style="padding:5px 3px;">J</th>
+                                        <th style="padding:5px 3px;">G</th>
+                                        <th style="padding:5px 3px;">N</th>
+                                        <th style="padding:5px 3px;">P</th>
+                                        <th style="padding:5px 3px;">BP</th>
+                                        <th style="padding:5px 3px;">BC</th>
+                                        <th style="padding:5px 4px;">Diff</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${miniRows}</tbody>
+                            </table>
+                        </div>`;
+                }
+
+                // Synchronise les éditions faites directement dans le tableau d'aperçu
+                apercu.addEventListener('input', (e) => {
+                    const inp = e.target;
+                    const tr = inp.closest('tr[data-edit-idx]');
+                    if (!tr) return;
+                    const idx = parseInt(tr.dataset.editIdx, 10);
+                    const field = inp.dataset.field;
+                    const ligne = lignesCourantes[idx];
+                    if (!ligne || !field) return;
+
+                    if (field === 'equipe') {
+                        ligne.equipe = inp.value.trim();
+                        ligne.estChalosse = estEquipeChalosse(ligne.equipe);
                     } else {
-                        apercu.textContent = '';
+                        ligne[field] = parseInt(inp.value, 10) || 0;
+                        if (field === 'bp' || field === 'bc') {
+                            ligne.diff = ligne.bp - ligne.bc;
+                            const diffCell = apercu.querySelector(`[data-diff-cell="${idx}"]`);
+                            if (diffCell) diffCell.textContent = ligne.diff > 0 ? `+${ligne.diff}` : `${ligne.diff}`;
+                        }
+                    }
+                });
+
+                function majApercuDepuisTexte() {
+                    const res = parserClassementFFF(txt.value);
+                    lignesCourantes = res.lignes;
+                    competitionDetectee = res.competition || '';
+                    rendreApercuEditable();
+                }
+
+                async function traiterCaptureImage(fichier) {
+                    if (!fichier) return;
+                    statutOcr.innerHTML = `<span style="color:var(--jaune);">⏳ Préparation de la capture…</span>`;
+                    try {
+                        const res = await lireClassementDepuisImage(fichier, (etape) => {
+                            statutOcr.innerHTML = `<span style="color:var(--jaune);">⏳ ${echapper(etape)}</span>`;
+                        });
+                        if (res.lignes.length > 0) {
+                            lignesCourantes = res.lignes;
+                            txt.value = res.texteTabule;
+                            rendreApercuEditable();
+                            statutOcr.innerHTML = `<span style="color:var(--vert); font-weight:700;">✓ Capture analysée (${res.lignes.length} équipes) !</span>`;
+                        } else {
+                            statutOcr.innerHTML = `<span style="color:var(--orange);">⚠️ Aucun tableau reconnu sur cette image. Essayez une capture plus nette du tableau ou le copier-coller texte.</span>`;
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        statutOcr.innerHTML = `<span class="error-text">❌ Erreur OCR : ${echapper(err.message)}</span>`;
+                    }
+                }
+
+                txt.addEventListener('input', majApercuDepuisTexte);
+
+                inputImg.addEventListener('change', (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) traiterCaptureImage(f);
+                    inputImg.value = '';
+                });
+
+                // Permet de faire Ctrl+V d'une capture d'écran directement dans la fenêtre !
+                boite.addEventListener('paste', (e) => {
+                    const items = e.clipboardData?.items;
+                    if (!items) return;
+                    for (const it of items) {
+                        if (it.type && it.type.startsWith('image/')) {
+                            e.preventDefault();
+                            const blob = it.getAsFile();
+                            if (blob) traiterCaptureImage(blob);
+                            return;
+                        }
                     }
                 });
 
                 boite.querySelector('#btn-annuler-imp').onclick = () => fermer(false);
                 boite.querySelector('#btn-valider-imp').onclick = async () => {
-                    dernierParse = parserClassementFFF(txt.value);
-                    if (dernierParse.lignes.length < 2) {
+                    if (lignesCourantes.length < 2) {
+                        majApercuDepuisTexte();
+                    }
+                    if (lignesCourantes.length < 2) {
                         toast("Impossible de détecter le tableau. Vérifiez votre copier-coller depuis epreuves.fff.fr.", 'error', 4500);
                         return;
                     }
@@ -284,16 +332,15 @@
                     chargement(btnOk, true, 'Enregistrement…');
                     try {
                         const payload = {
-                            competition: dernierParse.competition || LIBELLES_DEFAUT[equipeActive].titre,
+                            competition: competitionDetectee || LIBELLES_DEFAUT[equipeActive].titre,
                             poule: '',
                             source: 'import-fff',
                             maj: new Date().toISOString(),
-                            lignes: dernierParse.lignes
+                            lignes: lignesCourantes
                         };
                         await setDoc(doc(db, "saisons", LIBELLES_DEFAUT[equipeActive].docId), payload);
                         invaliderCache("saisons");
                         donneesClassement[equipeActive] = payload;
-                        document.getElementById('zone-alerte-api').classList.add('hidden');
                         afficherClassement();
                         toast(`Classement enregistré (${payload.lignes.length} équipes) !`);
                         fermer(true);
