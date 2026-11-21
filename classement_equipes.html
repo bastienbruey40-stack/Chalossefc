@@ -68,6 +68,7 @@
         import { toast, ouvrirModal, chargement, echapper } from "./js/ui.js";
         import { parserClassementFFF, estEquipeChalosse, URL_FFF_CLUB } from "./js/fff_classement.js";
         import { lireClassementDepuisImage } from "./js/fff_ocr.js";
+        import { rendreLogoClubHTML, trouverLogoClub } from "./js/logos_clubs.js";
 
         const LIBELLES_DEFAUT = {
             premiere: { titre: 'Séniors Départemental 2 · Poule A', docId: 'classement_premiere' },
@@ -134,11 +135,20 @@
                 const diffStr = l.diff > 0 ? `+${l.diff}` : `${l.diff}`;
                 const diffCls = l.diff > 0 ? 'c-buts' : (l.diff < 0 ? 'c-rouges' : 'c-zero');
 
+                const logoHtml = rendreLogoClubHTML(l.equipe, {
+                    url: l.logo || '',
+                    classe: 'logo',
+                    style: 'width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0;font-size:.85rem;'
+                });
+
                 return `
                     <tr class="${clsRow}">
                         <td style="text-align:center; font-weight:800;">${medaille}</td>
                         <td style="text-align:left; font-weight:${estNous ? '800' : '600'};">
-                            ${estNous ? '⭐ ' : ''}${echapper(l.equipe)}
+                            <div style="display:flex; align-items:center; gap:9px;">
+                                ${logoHtml}
+                                <span>${echapper(l.equipe)}</span>
+                            </div>
                         </td>
                         <td style="font-weight:900; color:var(--jaune);">${l.points}</td>
                         <td>${l.joues}</td>
@@ -259,6 +269,7 @@
                     if (field === 'equipe') {
                         ligne.equipe = inp.value.trim();
                         ligne.estChalosse = estEquipeChalosse(ligne.equipe);
+                        ligne.logo = trouverLogoClub(ligne.equipe, ligne.logo);
                     } else {
                         ligne[field] = parseInt(inp.value, 10) || 0;
                         if (field === 'bp' || field === 'bc') {

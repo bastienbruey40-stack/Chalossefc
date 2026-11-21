@@ -2,6 +2,7 @@
 import { doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { db, invaliderCache } from "./firebase.js";
 import { toast, confirmer, ouvrirModal, chargement, formaterDate, versDate, versISO, echapper } from "./ui.js";
+import { trouverLogoClub, rendreLogoClubHTML } from "./logos_clubs.js";
 
 const cache = new Map();
 
@@ -13,19 +14,10 @@ export function trierParDate(liste) {
     return liste.sort((a, b) => (versDate(a.data.date)?.getTime() ?? Infinity) - (versDate(b.data.date)?.getTime() ?? Infinity));
 }
 
-function urlLogoSaine(url) {
-    if (!url || typeof url !== 'string') return '';
-    const u = url.trim();
-    return /^https?:\/\//i.test(u) ? u : '';
-}
-
 export function carteMatch(id, d, { admin = false, gestion = false, modeSelection = false, selectionne = false } = {}) {
     cache.set(id, d);
     const adv = echapper(d.adversaire || 'Adversaire');
-    const urlLogo = urlLogoSaine(d.logo);
-    const logoAdv = urlLogo
-        ? `<img src="${echapper(urlLogo)}" class="logo" alt="" loading="lazy" referrerpolicy="no-referrer">`
-        : `<div class="logo">🛡️</div>`;
+    const logoAdv = rendreLogoClubHTML(d.adversaire, { url: d.logo, classe: 'logo' });
 
     let centre = `<div class="vs-box">VS</div>`;
     let badge = '';
@@ -162,7 +154,7 @@ export function editerMatchComplet(id, d) {
                 equipe_type: equipeChoisie,
                 adversaire: adversaire,
                 date: date,
-                logo: logo
+                logo: logo || trouverLogoClub(adversaire)
             };
 
             if (valC === '' && valA === '') {

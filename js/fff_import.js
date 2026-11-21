@@ -6,6 +6,7 @@
 import { collection, getDocs, addDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { db, estProfilJoueur } from "./firebase.js";
 import { formaterNomPrenomFFF, construireIndexJoueurs, associerJoueurFFF } from "./fff_parser.js";
+import { trouverLogoClub } from "./logos_clubs.js";
 
 export const MATCHS_FFF_CHALOSSE = [
     // =========================================================================
@@ -166,12 +167,17 @@ async function executerImportFFF() {
         clesPresentes.add(cle);
 
         const mFFF = fffParCle.get(cle);
+        const logoAuto = !data.logo ? trouverLogoClub(data.adversaire) : '';
         if (mFFF && mFFF.score_chalosse !== null && (data.score_chalosse === undefined || data.score_chalosse === null)) {
             misAJour++;
-            promesses.push(updateDoc(doc(db, "matchs", d.id), {
+            const patch = {
                 score_chalosse: mFFF.score_chalosse,
                 score_adversaire: mFFF.score_adversaire
-            }));
+            };
+            if (logoAuto) patch.logo = logoAuto;
+            promesses.push(updateDoc(doc(db, "matchs", d.id), patch));
+        } else if (logoAuto) {
+            promesses.push(updateDoc(doc(db, "matchs", d.id), { logo: logoAuto }));
         }
     });
 
@@ -183,7 +189,7 @@ async function executerImportFFF() {
                 equipe_type: m.equipe_type,
                 adversaire: m.adversaire,
                 date: m.date,
-                logo: "",
+                logo: trouverLogoClub(m.adversaire),
                 score_chalosse: m.score_chalosse,
                 score_adversaire: m.score_adversaire,
                 compo: []

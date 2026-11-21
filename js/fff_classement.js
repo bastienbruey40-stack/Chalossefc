@@ -1,6 +1,8 @@
 // Récupération et parsing des classements FFF (API DOFA + repli copier-coller epreuves.fff.fr)
 // Club : CHALOSSE F. C. LAUREDE (Affiliation FFF n° 529258 - District des Landes)
 
+import { trouverLogoClub, extraireCodeClubFFF } from './logos_clubs.js';
+
 export const CLUB_FFF_ID = 529258;
 export const URL_FFF_CLUB = `https://epreuves.fff.fr/club/${CLUB_FFF_ID}`;
 const API_BASE = 'https://api-dofa.fff.fr/api';
@@ -235,10 +237,19 @@ export function parserClassementFFF(texteBrut) {
         return { lignes: [], competition: '' };
     }
 
+    // Mémorise les codes clubs FFF présents dans les liens Markdown [NOM](https://.../club/560234-...) avant nettoyage
+    const codesParEquipe = new Map();
     const rawLines = String(texteBrut)
         .replace(/\r/g, '\n')
         .split('\n')
-        .map(l => l.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, '$1').trim())
+        .map(l => {
+            const mLink = l.match(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/);
+            if (mLink) {
+                const code = extraireCodeClubFFF(mLink[2]);
+                if (code) codesParEquipe.set(normaliser(mLink[1]), code);
+            }
+            return l.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, '$1').trim();
+        })
         .filter(l => {
             if (!l) return false;
             const u = normaliser(l);
@@ -284,6 +295,10 @@ export function parserClassementFFF(texteBrut) {
     }
 
     if (lignesMono.length >= 3) {
+        lignesMono.forEach(l => {
+            const code = codesParEquipe.get(normaliser(l.equipe));
+            if (code) l.logo = trouverLogoClub(l.equipe, code);
+        });
         return { lignes: dedupEtTrier(lignesMono), competition };
     }
 
@@ -343,7 +358,8 @@ export function parserClassementFFF(texteBrut) {
         }
 
         if (nums.length >= 7) {
-            const parsed = mapNombresClassement(rang, nomCandidat, nums);
+            const code = codesParEquipe.get(normaliser(nomCandidat)) || '';
+            const parsed = mapNombresClassement(rang, nomCandidat, nums, code);
             if (parsed) {
                 unifie.push(parsed);
                 i = j - 1;
@@ -354,7 +370,7 @@ export function parserClassementFFF(texteBrut) {
     return { lignes: dedupEtTrier(unifie), competition };
 }
 
-export function mapNombresClassement(rang, equipe, nums) {
+export function mapNombresClassement(rang, equipe, nums, codeOuUrlLogo = '') {
     if (!equipe || nums.length < 7) return null;
     // Formats FFF officiels :
     // 10 nombres (epreuves.fff.fr actuel) : Pts, J, G, N, P, F, P/Bo, Bp, Bc, Diff
@@ -388,9 +404,11 @@ export function mapNombresClassement(rang, equipe, nums) {
         diff = bp - bc;
     }
 
+    const nomPropre = equipe.trim();
     return {
         rang,
-        equipe: equipe.trim(),
+        equipe: nomPropre,
+        logo: trouverLogoClub(nomPropre, codeOuUrlLogo),
         points,
         joues,
         gagnes,
@@ -400,7 +418,7 @@ export function mapNombresClassement(rang, equipe, nums) {
         bp,
         bc,
         diff,
-        estChalosse: estEquipeChalosse(equipe)
+        estChalosse: estEquipeChalosse(nomPropre)
     };
 }
 
