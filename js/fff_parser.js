@@ -55,21 +55,38 @@ export function formaterNomPrenomFFF(nomBrut) {
  */
 export function construireIndexJoueurs(listeJoueurs) {
     return (listeJoueurs || [])
-        .filter(j => j && j.id && j.prenom)
+        .filter(j => j && j.id && (j.prenom || j.nom || j.nomComplet))
         .map(j => {
-            const prenom = String(j.prenom || '').trim();
-            const nom = String(j.nom || '').trim();
+            let prenom = String(j.prenom || '').trim();
+            let nom = String(j.nom || '').trim();
+            const nomCompletBrut = String(j.nomComplet || `${prenom} ${nom}`).trim();
+
+            if (!prenom && nomCompletBrut.includes(' ')) {
+                const parts = nomCompletBrut.split(/\s+/);
+                prenom = parts[0];
+                nom = parts.slice(1).join(' ');
+            } else if (!nom && nomCompletBrut.includes(' ')) {
+                const parts = nomCompletBrut.split(/\s+/);
+                prenom = parts[0];
+                nom = parts.slice(1).join(' ');
+            }
+
             const prenomNorm = normaliserNom(prenom);
             const nomNorm = normaliserNom(nom);
             const prenomSansTiret = prenomNorm.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
             const nomSansTiret = nomNorm.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
             const complet1 = [prenomNorm, nomNorm].filter(Boolean).join(' ');
             const complet2 = [nomNorm, prenomNorm].filter(Boolean).join(' ');
+
+            // Tous les mots du nom complet du joueur
+            const tokens = normaliserNom(nomCompletBrut).split(' ').filter(Boolean);
+            const initiales = new Set(tokens.map(t => t[0]));
+
             return {
                 id: j.id,
                 prenom,
                 nom,
-                nomComplet: j.nomComplet || `${prenom} ${nom}`.trim(),
+                nomComplet: j.nomComplet || `${prenom} ${nom}`.trim() || nomCompletBrut,
                 poste: j.poste || 'Milieu',
                 numero: j.numero ?? null,
                 prenomNorm,
@@ -77,7 +94,9 @@ export function construireIndexJoueurs(listeJoueurs) {
                 prenomSansTiret,
                 nomSansTiret,
                 complet1,
-                complet2
+                complet2,
+                tokens,
+                initiales
             };
         });
 }
@@ -149,22 +168,32 @@ export function associerJoueurFFF(nomBrut, indexJoueurs) {
         const init = tokens[tokens.length - 1];
         const prenomFFF = tokens.slice(0, -1).join(' ');
         const prenomFFFNoDash = prenomFFF.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-        const memeInit = indexJoueurs.filter(j => j.nomNorm && j.nomNorm.startsWith(init));
+        const premierMotFFF = prenomFFFNoDash.split(' ')[0];
 
-        // Tier 2a : Prénom exact + initiale exacte du nom
-        const tier2a = memeInit.filter(j => j.prenomSansTiret === prenomFFFNoDash);
+        // Joueurs qui possèdent cette initiale (dans le nom, le prénom, ou n'importe quel mot de leur nom complet)
+        const memeInit = indexJoueurs.filter(j => 
+            (j.nomNorm && j.nomNorm.startsWith(init)) ||
+            (j.prenomNorm && j.prenomNorm.startsWith(init)) ||
+            (j.initiales && j.initiales.has(init))
+        );
+
+        const estPrenomIdentique = (j, cible) => {
+            return j.prenomSansTiret === cible || j.nomSansTiret === cible || (j.tokens && j.tokens.includes(cible));
+        };
+
+        // Tier 2a : Prénom exact + initiale exacte
+        const tier2a = memeInit.filter(j => estPrenomIdentique(j, prenomFFFNoDash));
         const res2a = conclureAssociation(tier2a, 'exact');
         if (res2a) return res2a;
 
-        // Tier 2b : Prénom composé / préfixe + initiale exacte (ex: "GUILLAUME ALEXANDRE R." <-> "Guillaume Roussel")
-        const premierMotFFF = prenomFFFNoDash.split(' ')[0];
+        // Tier 2b : Prénom composé / premier mot du prénom + initiale exacte (ex: "GUILLAUME ALEXANDRE R." <-> "Guillaume Roussel")
         const tier2b = memeInit.filter(j => {
-            if (!j.prenomSansTiret) return false;
-            const premierMotJoueur = j.prenomSansTiret.split(' ')[0];
+            const premJ1 = (j.prenomSansTiret || '').split(' ')[0];
+            const premJ2 = (j.nomSansTiret || '').split(' ')[0];
             return (
-                j.prenomSansTiret.startsWith(prenomFFFNoDash) ||
-                prenomFFFNoDash.startsWith(j.prenomSansTiret) ||
-                (premierMotFFF.length >= 2 && premierMotJoueur === premierMotFFF)
+                (premJ1 && (premJ1 === premierMotFFF || j.prenomSansTiret.startsWith(prenomFFFNoDash) || prenomFFFNoDash.startsWith(j.prenomSansTiret))) ||
+                (premJ2 && (premJ2 === premierMotFFF || j.nomSansTiret.startsWith(prenomFFFNoDash) || prenomFFFNoDash.startsWith(j.nomSansTiret))) ||
+                (j.tokens && j.tokens.includes(premierMotFFF))
             );
         });
         const res2b = conclureAssociation(tier2b, 'probable');
@@ -172,18 +201,33 @@ export function associerJoueurFFF(nomBrut, indexJoueurs) {
 
         // Tier 3 : Tolérance orthographique sur le prénom + initiale exacte (ex: LOIK <-> Loïc, MATIS <-> Mathis)
         const tier3 = memeInit.filter(j => {
-            if (!j.prenomSansTiret) return false;
-            const dist = levenshtein(j.prenomSansTiret, prenomFFFNoDash);
-            if (dist <= 1) return true;
-            return (
-                dist <= 2 &&
-                j.prenomSansTiret.length >= 6 &&
-                prenomFFFNoDash.length >= 6 &&
-                j.prenomSansTiret.slice(0, 3) === prenomFFFNoDash.slice(0, 3)
-            );
+            const cibles = [j.prenomSansTiret, j.nomSansTiret, ...(j.tokens || [])].filter(Boolean);
+            return cibles.some(c => {
+                const dist1 = levenshtein(c, prenomFFFNoDash);
+                if (dist1 <= 1) return true;
+                if (dist1 <= 2 && c.length >= 5 && prenomFFFNoDash.length >= 5 && c.slice(0, 3) === prenomFFFNoDash.slice(0, 3)) return true;
+                const dist2 = levenshtein(c, premierMotFFF);
+                if (dist2 <= 1) return true;
+                return false;
+            });
         });
         const res3 = conclureAssociation(tier3, 'probable');
         if (res3) return res3;
+
+        // Tier 3b : Prénom unique dans tout l'effectif (même si l'initiale diffère légèrement ou nom de jeune fille / composé)
+        const parPrenomSeul = indexJoueurs.filter(j => {
+            const premJ = (j.prenomSansTiret || '').split(' ')[0];
+            const premNom = (j.nomSansTiret || '').split(' ')[0];
+            if (premJ === premierMotFFF || premNom === premierMotFFF) return true;
+            if (j.tokens && j.tokens.includes(premierMotFFF)) return true;
+            if (levenshtein(premJ, premierMotFFF) <= 1 || levenshtein(premNom, premierMotFFF) <= 1) return true;
+            return false;
+        });
+        if (parPrenomSeul.length === 1) {
+            return { statut: 'probable', candidatId: parPrenomSeul[0].id, candidats: parPrenomSeul };
+        } else if (parPrenomSeul.length > 1) {
+            return { statut: 'ambigu', candidatId: null, candidats: parPrenomSeul };
+        }
     }
 
     // Tier 4 : Mot unique (saisie manuelle rapide par nom ou prénom seul)
