@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0b0b0d">
+    <title>Validation du compte - FC Chalosse</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="FC Chalosse">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" href="chalosse.webp">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="auth-page">
+
+    <!-- Vue chargement / confirmation -->
+    <div class="auth-card" id="vue-statut">
+        <img src="chalosse.webp" alt="Logo FC Chalosse" class="auth-logo">
+        <h1 id="statut-titre">Vérification en cours…</h1>
+        <p class="muted" id="statut-texte">Validation sécurisée de votre demande dans Safari.</p>
+
+        <div id="statut-spinner" class="account-info-item" style="justify-content: center; gap: 10px; margin: 16px 0;">
+            <span class="spinner" style="color: var(--jaune);"></span>
+            <span style="font-size: .9rem; font-weight: 600;">Un instant…</span>
+        </div>
+
+        <div id="statut-info-raccourci" class="info-admin hidden" style="display: block; text-align: left; font-size: .84rem; margin: 14px 0;">
+            📱 <strong>Vous utilisez le raccourci sur votre écran d'accueil ?</strong><br>
+            Vous pouvez retourner directement sur l'icône <strong>FC Chalosse</strong> : votre compte est maintenant débloqué !
+        </div>
+
+        <a href="connexion.html?verifie=1" class="btn hidden" id="btn-continuer-action">Accéder à FC Chalosse →</a>
+    </div>
+
+    <!-- Vue réinitialisation de mot de passe (si Action URL Firebase pointe ici) -->
+    <div class="auth-card hidden" id="vue-reset">
+        <img src="chalosse.webp" alt="Logo FC Chalosse" class="auth-logo">
+        <h1>Nouveau mot de passe</h1>
+        <p class="muted" id="reset-email-label">Choisissez un nouveau mot de passe pour votre compte.</p>
+
+        <form id="form-reset">
+            <label for="in-new-pw">Nouveau mot de passe</label>
+            <div class="pw-wrap">
+                <input type="password" id="in-new-pw" placeholder="6 caractères minimum" autocomplete="new-password" minlength="6" required>
+                <button type="button" class="pw-toggle" id="btn-toggle-pw" title="Afficher le mot de passe" aria-label="Afficher le mot de passe">👁️</button>
+            </div>
+            <button class="btn" type="submit" id="btn-valider-reset">Enregistrer le mot de passe</button>
+        </form>
+        <a href="connexion.html" class="lien">Retour à la <strong>connexion</strong></a>
+    </div>
+
+    <script type="module">
+        import {
+            applyActionCode,
+            verifyPasswordResetCode,
+            confirmPasswordReset,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { auth, db } from "./js/firebase.js";
+        import { toast, flash, chargement } from "./js/ui.js";
+
+        auth.languageCode = 'fr';
+
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const mode = params.get('mode');
+        const oobCode = params.get('oobCode');
+        const retour = params.get('retour');
+
+        const vueStatut = document.getElementById('vue-statut');
+        const vueReset = document.getElementById('vue-reset');
+        const titreEl = document.getElementById('statut-titre');
+        const texteEl = document.getElementById('statut-texte');
+        const spinnerEl = document.getElementById('statut-spinner');
+        const infoRaccourciEl = document.getElementById('statut-info-raccourci');
+        const btnContinuer = document.getElementById('btn-continuer-action');
+
+        function afficherResultat({ titre, texte, succes = true, lien = 'connexion.html?verifie=1', labelLien = 'Accéder à FC Chalosse →', montrerInfoRaccourci = false }) {
+            spinnerEl.classList.add('hidden');
+            titreEl.textContent = titre;
+            texteEl.textContent = texte;
+            btnContinuer.href = lien;
+            btnContinuer.textContent = labelLien;
+            btnContinuer.classList.remove('hidden');
+            if (montrerInfoRaccourci) infoRaccourciEl.classList.remove('hidden');
+            if (!succes) {
+                texteEl.classList.add('error-text');
+            }
+        }
+
+        async function marquerCompteVerifieSiConnecte() {
+            return new Promise((resolve) => {
+                const unsub = onAuthStateChanged(auth, async (user) => {
+                    unsub();
+                    if (!user) { resolve(false); return; }
+                    try {
+                        await user.reload();
+                        if (auth.currentUser?.emailVerified) {
+                            await updateDoc(doc(db, "utilisateurs", user.uid), {
+                                attente_confirmation_mail: false
+                            }).catch(() => {});
+                            resolve(true);
+                            return;
+                        }
+                    } catch (_) {}
+                    resolve(false);
+                });
+            });
+        }
+
+        async function executer() {
+            // Cas 1 : Retour après validation depuis la page hébergée Firebase
+            if (!mode && retour === 'verifie') {
+                const dejaConnecte = await marquerCompteVerifieSiConnecte();
+                if (dejaConnecte) {
+                    flash("Adresse e-mail confirmée ! Bienvenue au FC Chalosse.");
+                    window.location.href = "index.html";
+                    return;
+                }
+                afficherResultat({
+                    titre: "✅ Adresse e-mail confirmée !",
+                    texte: "Votre compte FC Chalosse est validé. Vous pouvez maintenant vous connecter.",
+                    lien: "connexion.html?verifie=1",
+                    labelLien: "Se connecter →",
+                    montrerInfoRaccourci: true
+                });
+                return;
+            }
+
+            // Cas 2 : Validation d'e-mail directe dans FC Chalosse (sans passer par une page Google)
+            if (mode === 'verifyEmail' && oobCode) {
+                try {
+                    await applyActionCode(auth, oobCode);
+                    const dejaConnecte = await marquerCompteVerifieSiConnecte();
+                    if (dejaConnecte) {
+                        flash("Adresse e-mail confirmée ! Bienvenue au FC Chalosse.");
+                        window.location.href = "index.html";
+                        return;
+                    }
+                    afficherResultat({
+                        titre: "✅ Adresse e-mail confirmée !",
+                        texte: "Votre inscription est validée. Vous pouvez désormais vous connecter.",
+                        lien: "connexion.html?verifie=1",
+                        labelLien: "Se connecter →",
+                        montrerInfoRaccourci: true
+                    });
+                } catch (err) {
+                    const dejaConnecte = await marquerCompteVerifieSiConnecte();
+                    if (dejaConnecte) {
+                        flash("Votre adresse e-mail est déjà confirmée !");
+                        window.location.href = "index.html";
+                        return;
+                    }
+                    const msg = err?.code === 'auth/invalid-action-code'
+                        ? "Ce lien a déjà été utilisé ou a expiré. Si vous venez de confirmer votre e-mail, vous pouvez vous connecter directement."
+                        : "Impossible de valider ce lien : " + (err?.message || err);
+                    afficherResultat({
+                        titre: "Lien déjà utilisé ou expiré",
+                        texte: msg,
+                        succes: false,
+                        lien: "connexion.html",
+                        labelLien: "Aller à la connexion"
+                    });
+                }
+                return;
+            }
+
+            // Cas 3 : Réinitialisation de mot de passe directe dans FC Chalosse
+            if (mode === 'resetPassword' && oobCode) {
+                try {
+                    const email = await verifyPasswordResetCode(auth, oobCode);
+                    vueStatut.classList.add('hidden');
+                    vueReset.classList.remove('hidden');
+                    document.getElementById('reset-email-label').textContent = `Compte : ${email}`;
+
+                    const inPw = document.getElementById('in-new-pw');
+                    document.getElementById('btn-toggle-pw').addEventListener('click', () => {
+                        inPw.type = inPw.type === 'text' ? 'password' : 'text';
+                    });
+
+                    document.getElementById('form-reset').addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const pw = inPw.value;
+                        if (pw.length < 6) return toast("Le mot de passe doit faire au moins 6 caractères.", 'error');
+                        const btn = document.getElementById('btn-valider-reset');
+                        chargement(btn, true, 'Enregistrement…');
+                        try {
+                            await confirmPasswordReset(auth, oobCode, pw);
+                            flash("Mot de passe mis à jour ! Connectez-vous avec votre nouveau mot de passe.");
+                            window.location.href = "connexion.html";
+                        } catch (err) {
+                            toast("Erreur : " + (err?.message || err), 'error');
+                            chargement(btn, false);
+                        }
+                    });
+                } catch (err) {
+                    afficherResultat({
+                        titre: "Lien expiré",
+                        texte: "Ce lien de réinitialisation n'est plus valide ou a déjà été utilisé. Demandez un nouveau mail depuis la page Connexion.",
+                        succes: false,
+                        lien: "connexion.html",
+                        labelLien: "Retour à la connexion"
+                    });
+                }
+                return;
+            }
+
+            // Cas 4 : Autre action (ex: recoverEmail)
+            if (mode === 'recoverEmail' && oobCode) {
+                try {
+                    await applyActionCode(auth, oobCode);
+                    afficherResultat({
+                        titre: "✅ Adresse e-mail restaurée",
+                        texte: "Votre adresse e-mail d'origine a bien été rétablie.",
+                        lien: "connexion.html",
+                        labelLien: "Se connecter →"
+                    });
+                } catch (err) {
+                    afficherResultat({
+                        titre: "Lien expiré",
+                        texte: "Ce lien de récupération n'est plus valide.",
+                        succes: false,
+                        lien: "connexion.html",
+                        labelLien: "Retour à la connexion"
+                    });
+                }
+                return;
+            }
+
+            // Aucun paramètre : retour propre à la connexion
+            window.location.href = "connexion.html";
+        }
+
+        executer();
+    </script>
+</body>
+</html>

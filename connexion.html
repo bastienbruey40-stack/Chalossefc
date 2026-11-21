@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b0b0d">
     <title>Connexion - FC Chalosse</title>
-    <link rel="apple-touch-icon" href="chalosse.webp">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="FC Chalosse">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="icon" href="chalosse.webp">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
@@ -41,7 +46,8 @@
         import {
             signInWithEmailAndPassword,
             sendPasswordResetEmail,
-            deleteUser
+            deleteUser,
+            onAuthStateChanged
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { doc, getDoc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { auth, db, estSuperAdmin } from "./js/firebase.js";
@@ -49,6 +55,34 @@
 
         auth.languageCode = 'fr';
         afficherFlash();
+
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+
+        // Retour depuis le lien de confirmation d'e-mail
+        {
+            const p = new URLSearchParams(window.location.search);
+            if (p.get('mode') && p.get('oobCode')) {
+                window.location.replace('action_auth.html' + window.location.search);
+            } else if (p.get('verifie') === '1') {
+                toast("Adresse e-mail confirmée ! Connectez-vous pour accéder à l'application.", 'success', 5500);
+                const unsub = onAuthStateChanged(auth, async (user) => {
+                    unsub();
+                    if (!user) return;
+                    try {
+                        await user.reload();
+                        if (auth.currentUser?.emailVerified) {
+                            await updateDoc(doc(db, "utilisateurs", user.uid), {
+                                attente_confirmation_mail: false
+                            }).catch(() => {});
+                            flash("Adresse e-mail confirmée ! Bienvenue au FC Chalosse.");
+                            window.location.href = "index.html";
+                        }
+                    } catch (_) {}
+                });
+            }
+        }
 
         // Afficher / masquer le mot de passe
         const inPw = document.getElementById('in-password');
@@ -162,9 +196,19 @@
                 ]
             });
             if (!res || !res.email.trim()) return;
+            const mailCible = res.email.trim();
             try {
-                await sendPasswordResetEmail(auth, res.email.trim());
-                toast(`E-mail envoyé à ${res.email.trim()} (vérifiez aussi vos spams) !`, 'success', 5500);
+                const urlRetour = new URL('connexion.html', window.location.href).href;
+                try {
+                    await sendPasswordResetEmail(auth, mailCible, { url: urlRetour, handleCodeInApp: false });
+                } catch (errUrl) {
+                    if (errUrl?.code === 'auth/unauthorized-continue-uri' || errUrl?.code === 'auth/invalid-continue-uri') {
+                        await sendPasswordResetEmail(auth, mailCible);
+                    } else {
+                        throw errUrl;
+                    }
+                }
+                toast(`E-mail envoyé à ${mailCible} (vérifiez aussi vos spams) !`, 'success', 5500);
             } catch (err) {
                 console.error(err);
                 toast("Impossible d'envoyer l'e-mail : vérifiez l'adresse saisie.", 'error');

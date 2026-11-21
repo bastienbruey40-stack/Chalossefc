@@ -32,6 +32,7 @@
     --shadow-lg: 0 18px 50px rgba(16, 24, 40, .20);
     --sidebar: 268px;
     --bottom-nav: 66px;
+    --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     color-scheme: light;
 }
@@ -78,9 +79,9 @@ h1, h2, h3 { line-height: 1.2; }
     .app { padding-left: var(--sidebar); padding-bottom: 48px; }
 }
 
-.container { width: 100%; max-width: 1140px; margin: 0 auto; padding: 20px 16px; }
+.container { width: 100%; max-width: 1140px; margin: 0 auto; padding: calc(20px + var(--safe-top)) 16px 20px; }
 .container.narrow { max-width: 680px; }
-@media (min-width: 640px) { .container { padding: 32px 24px; } }
+@media (min-width: 640px) { .container { padding: calc(32px + var(--safe-top)) 24px 32px; } }
 @media (min-width: 1024px) { .container { padding: 44px 44px; } }
 
 /* ---------- En-tête de page ---------- */
@@ -592,7 +593,8 @@ th:first-child { z-index: 2; }
    ========================================================= */
 .auth-page {
     min-height: 100vh; min-height: 100dvh;
-    display: grid; place-items: center; padding: 20px;
+    display: grid; place-items: center;
+    padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom));
     background:
         radial-gradient(90% 60% at 100% 0%, rgba(255, 204, 0, .28) 0%, transparent 60%),
         radial-gradient(70% 50% at 0% 100%, rgba(255, 204, 0, .12) 0%, transparent 60%),

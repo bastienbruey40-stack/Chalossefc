@@ -145,7 +145,16 @@ function afficherMonCompte() {
         };
         boite.querySelector('#btn-reset-mail').onclick = async () => {
             try {
-                await sendPasswordResetEmail(auth, email);
+                const urlRetour = new URL('connexion.html', window.location.href).href;
+                try {
+                    await sendPasswordResetEmail(auth, email, { url: urlRetour, handleCodeInApp: false });
+                } catch (errUrl) {
+                    if (errUrl?.code === 'auth/unauthorized-continue-uri' || errUrl?.code === 'auth/invalid-continue-uri') {
+                        await sendPasswordResetEmail(auth, email);
+                    } else {
+                        throw errUrl;
+                    }
+                }
                 toast(`E-mail de changement de mot de passe envoyé à ${email}`);
                 fermer();
             } catch (e) {

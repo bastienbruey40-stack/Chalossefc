@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b0b0d">
     <title>Inscription - FC Chalosse</title>
-    <link rel="apple-touch-icon" href="chalosse.webp">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="FC Chalosse">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="icon" href="chalosse.webp">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
@@ -63,9 +68,19 @@
             <span style="font-size: .88rem; font-weight: 600;">Détection automatique du clic activée…</span>
         </div>
 
-        <p class="muted" style="font-size: .82rem; margin-bottom: 16px;">
+        <p class="muted" style="font-size: .82rem; margin-bottom: 12px;">
             Dès que vous cliquez sur le lien dans le mail, cette page vous redirige <strong>automatiquement</strong> vers l'application.
         </p>
+
+        <details class="iphone-mail-help" style="text-align: left; margin: 12px 0 14px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: .82rem;">
+            <summary style="cursor: pointer; font-weight: 700; color: var(--texte);">📱 Sur iPhone, on vous demande d'ouvrir Google ?</summary>
+            <p class="muted" style="margin: 8px 0 8px; line-height: 1.45;">
+                L'application <strong>Gmail</strong> sur iPhone propose parfois d'ouvrir les liens dans Google/Chrome même si vous n'avez que Safari.<br>
+                <strong>Solution rapide :</strong> maintenez le doigt sur le lien dans le mail → <strong>Copier le lien</strong>, puis collez-le ci-dessous pour valider directement ici :
+            </p>
+            <input type="url" id="input-lien-verif" placeholder="Collez le lien de confirmation ici…" autocomplete="off" style="font-size: .85rem; padding: 10px 12px;">
+            <button class="btn" type="button" id="btn-valider-lien" style="margin-top: 8px; padding: 10px 14px; font-size: .88rem;">Valider ce lien dans Safari</button>
+        </details>
 
         <button class="btn" type="button" id="btn-deja-confirme">✅ J'ai cliqué sur le lien dans le mail</button>
         <button class="btn-retour" type="button" id="btn-renvoyer-mail">🔄 Renvoyer l'e-mail de confirmation</button>
@@ -81,6 +96,7 @@
             deleteUser,
             sendEmailVerification,
             sendPasswordResetEmail,
+            applyActionCode,
             onAuthStateChanged,
             signOut
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -88,6 +104,10 @@
         import { toast, flash, ouvrirModal, chargement, echapper } from "./js/ui.js";
 
         auth.languageCode = 'fr';
+
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
 
         const inPw = document.getElementById('in-password');
         document.getElementById('btn-toggle-pw').addEventListener('click', () => {
@@ -97,9 +117,95 @@
         let timerVerification = null;
         let inscriptionEnCours = false;
 
-        // Envoi direct sans actionCodeSettings pour éviter tout rejet de domaine (127.0.0.1, github.io, etc.)
+        // Envoi avec retour web Safari (handleCodeInApp: false évite toute redirection vers une app Google)
+        // et repli automatique si le domaine courant n'est pas encore autorisé dans Firebase (ex: localhost)
         async function envoyerMailConfirmation(user) {
-            await sendEmailVerification(user);
+            const urlRetour = new URL('action_auth.html?retour=verifie', window.location.href).href;
+            try {
+                await sendEmailVerification(user, {
+                    url: urlRetour,
+                    handleCodeInApp: false
+                });
+            } catch (err) {
+                if (err?.code === 'auth/unauthorized-continue-uri' || err?.code === 'auth/invalid-continue-uri') {
+                    await sendEmailVerification(user);
+                } else {
+                    throw err;
+                }
+            }
+        }
+
+        async function envoyerMailReset(email) {
+            const urlRetour = new URL('connexion.html', window.location.href).href;
+            try {
+                await sendPasswordResetEmail(auth, email, {
+                    url: urlRetour,
+                    handleCodeInApp: false
+                });
+            } catch (err) {
+                if (err?.code === 'auth/unauthorized-continue-uri' || err?.code === 'auth/invalid-continue-uri') {
+                    await sendPasswordResetEmail(auth, email);
+                } else {
+                    throw err;
+                }
+            }
+        }
+
+        function extraireCodeVerification(entree) {
+            const brut = (entree || '').trim();
+            if (!brut) return null;
+            try {
+                const u = new URL(brut);
+                const code = u.searchParams.get('oobCode');
+                if (code) return code;
+                const inner = u.searchParams.get('link') || u.searchParams.get('continueUrl');
+                if (inner) return extraireCodeVerification(inner);
+            } catch (_) {
+                const m = brut.match(/[?&]oobCode=([^&#\s]+)/i);
+                if (m) return decodeURIComponent(m[1]);
+                if (/^[A-Za-z0-9_-]{20,}$/.test(brut)) return brut;
+            }
+            return null;
+        }
+
+        async function validerCodeDansApp(brut) {
+            const code = extraireCodeVerification(brut);
+            if (!code) {
+                toast("Lien non reconnu. Copiez le lien complet présent dans l'e-mail de confirmation.", 'error', 5000);
+                return;
+            }
+            const btn = document.getElementById('btn-valider-lien');
+            chargement(btn, true, 'Validation…');
+            try {
+                await applyActionCode(auth, code);
+                if (timerVerification) clearInterval(timerVerification);
+                const user = auth.currentUser;
+                if (user) {
+                    await user.reload().catch(() => {});
+                    await updateDoc(doc(db, "utilisateurs", user.uid), {
+                        attente_confirmation_mail: false
+                    }).catch(() => {});
+                    flash("Adresse e-mail confirmée ! Bienvenue au FC Chalosse.");
+                    window.location.href = "index.html";
+                    return;
+                }
+                flash("Adresse e-mail confirmée ! Vous pouvez maintenant vous connecter.");
+                window.location.href = "connexion.html?verifie=1";
+            } catch (err) {
+                console.error(err);
+                await verifierStatutMail(false);
+                toast("Ce lien a déjà été utilisé ou a expiré. Cliquez sur « J'ai cliqué sur le lien » ou renvoyez l'e-mail.", 'error', 5500);
+            } finally {
+                chargement(btn, false);
+            }
+        }
+
+        // Si un lien d'action Firebase pointe directement vers inscription.html?mode=verifyEmail&oobCode=...
+        {
+            const p = new URLSearchParams(window.location.search);
+            if (p.get('mode') === 'verifyEmail' && p.get('oobCode')) {
+                window.location.replace('action_auth.html' + window.location.search);
+            }
         }
 
         async function finaliserCreationCompte(user, prenom, nom, email) {
@@ -271,7 +377,7 @@
                 boite.querySelector('#btn-reset-ancien').onclick = async () => {
                     try {
                         localStorage.setItem('chalosse_recreation_profil', JSON.stringify({ prenom, nom, email }));
-                        await sendPasswordResetEmail(auth, email);
+                        await envoyerMailReset(email);
                         fermer('reset');
                         toast(`E-mail envoyé à ${email}. Pensez à vérifier vos spams !`, 'info', 7000);
                     } catch (err) {
@@ -324,6 +430,17 @@
         });
 
         document.getElementById('btn-deja-confirme').addEventListener('click', () => verifierStatutMail(true));
+
+        const inputLienVerif = document.getElementById('input-lien-verif');
+        document.getElementById('btn-valider-lien').addEventListener('click', () => {
+            validerCodeDansApp(inputLienVerif.value);
+        });
+        inputLienVerif.addEventListener('paste', (e) => {
+            const colle = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+            if (extraireCodeVerification(colle)) {
+                setTimeout(() => validerCodeDansApp(inputLienVerif.value || colle), 50);
+            }
+        });
 
         document.getElementById('btn-renvoyer-mail').addEventListener('click', async () => {
             const user = auth.currentUser;

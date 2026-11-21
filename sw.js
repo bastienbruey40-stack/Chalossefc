@@ -1,5 +1,5 @@
 // Service Worker PWA - FC Chalosse (Network-First pour le code HTML/CSS/JS, Stale-While-Revalidate pour les images)
-const CACHE_NAME = 'chalosse-v31';
+const CACHE_NAME = 'chalosse-v32';
 const ASSETS = [
     './',
     './index.html',
@@ -11,6 +11,10 @@ const ASSETS = [
     './match_detail.html',
     './connexion.html',
     './inscription.html',
+    './action_auth.html',
+    './icon-180.png',
+    './icon-192.png',
+    './icon-512.png',
     './css/style.css',
     './js/firebase.js',
     './js/ui.js',
