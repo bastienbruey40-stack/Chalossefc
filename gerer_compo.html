@@ -44,7 +44,7 @@
                 <div class="toolbar-row" style="margin-bottom: 4px;">
                     <label style="margin: 0;">3. Dispositif tactique</label>
                     <div class="toolbar-actions">
-                        <button type="button" class="btn-chip primary" id="btn-importer-noms" style="font-size:.8rem; padding:6px 11px;" title="Importer depuis epreuves.fff.fr (Ctrl+A / Ctrl+C) ou une liste de noms">⚽ Importer feuille FFF</button>
+                        <button type="button" class="btn-chip primary" id="btn-importer-noms" style="font-size:.8rem; padding:6px 11px;" title="Saisie rapide assistée avec suggestions ou import FFF">⚡ Saisir / Importer compo</button>
                         <button type="button" class="btn-chip" id="btn-vider-compo" style="font-size:.8rem; padding:6px 11px;">🗑️ Vider le terrain</button>
                     </div>
                 </div>
@@ -947,32 +947,544 @@
             ouvrirModal((boite, fermer) => {
                 boite.classList.add('modal-wide');
 
+        // Saisir manuellement ou importer une feuille de match FFF / liste avec suggestions intelligentes
+        document.getElementById('btn-importer-noms').addEventListener('click', () => {
+            if (!matchActifId) {
+                toast("Sélectionnez d'abord un match.", 'info');
+                return;
+            }
+            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
+            let texteMemorise = '';
+
+            // Copie locale de travail pour la saisie manuelle assistée
+            let slotsTit = { ...titulaires };
+            let slotsRemp = [ ...remplacants ];
+            let slotsNum = { ...numeros };
+
+            function trouverPremierSlotLibre() {
+                for (let i = 0; i < 11; i++) {
+                    if (!slotsTit[i]) return i;
+                }
+                for (let i = 0; i < 3; i++) {
+                    if (!slotsRemp[i]) return 11 + i;
+                }
+                return 0;
+            }
+
+            let slotCible = trouverPremierSlotLibre();
+            let ongletActif = 'saisie'; // 'saisie' ou 'coller'
+
+            function obtenirInfosSlot(idx) {
+                if (idx < 11) {
+                    const p = config.postes[idx] || { num: idx + 1, code: 'Tit.', categorie: 'Milieu', label: `Poste ${idx + 1}` };
+                    return { idx, numero: p.num, label: p.label, code: p.code, categorie: p.categorie, role: 'titulaire' };
+                }
+                const rempIdx = idx - 11;
+                return { idx, numero: 12 + rempIdx, label: `Remplaçant ${rempIdx + 1}`, code: 'Remp.', categorie: 'Remplaçant', role: 'remplacant' };
+            }
+
+            ouvrirModal((boite, fermer) => {
+                boite.classList.add('modal-wide');
+
                 function afficherEtape1() {
+                    const nbTitActuels = Object.keys(slotsTit).length;
+                    const nbRempActuels = slotsRemp.filter(Boolean).length;
+                    const totalRemplis = nbTitActuels + nbRempActuels;
+
                     boite.innerHTML = `
-                        <h3 class="modal-title">⚽ Importer une feuille de match FFF</h3>
-                        <p class="modal-text">
-                            <strong>1.</strong> Ouvrez le match sur <strong>epreuves.fff.fr</strong>, faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>.<br>
-                            <strong>2.</strong> Collez ci-dessous (<strong>Ctrl+V</strong>) et cliquez sur <strong>Analyser</strong>.<br>
-                            <small class="muted">Fonctionne aussi avec un copier-coller partiel de la compo ou une simple liste de noms (dispositif actuel : <strong>${echapper(dispositifActif)}</strong>).</small>
-                        </p>
-                        <textarea id="txt-noms-compo" rows="9" style="margin-top:10px; font-size:.88rem;" placeholder="Collez ici toute la page epreuves.fff.fr (Ctrl+A puis Ctrl+C)&#10;ou une simple liste de joueurs…">${echapper(texteMemorise)}</textarea>
-                        <div class="modal-actions">
-                            <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-noms">Annuler</button>
-                            <button type="button" class="btn-modal btn-modal-ok" id="btn-analyser-fff">🔍 Analyser la feuille</button>
+                        <h3 class="modal-title">⚡ Composer l'équipe (${echapper(dispositifActif)})</h3>
+                        <div class="saisie-tabs">
+                            <button type="button" class="saisie-tab-btn ${ongletActif === 'saisie' ? 'active' : ''}" id="tab-btn-saisie">
+                                ✍️ Saisie manuelle assistée
+                            </button>
+                            <button type="button" class="saisie-tab-btn ${ongletActif === 'coller' ? 'active' : ''}" id="tab-btn-coller">
+                                📋 Copier-coller FFF / Texte
+                            </button>
+                        </div>
+
+                        <!-- VUE 1 : SAISIE ASSISTÉE AVEC SUGGESTIONS EN TEMPS RÉEL -->
+                        <div id="vue-saisie-assistee" class="${ongletActif === 'saisie' ? '' : 'hidden'}">
+                            <div class="saisie-search-box" id="box-saisie-recherche">
+                                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                                    <label style="margin:0; font-size:.84rem; font-weight:700;" id="label-cible-slot">
+                                        👉 Cible : <span id="cible-slot-desc" style="color:var(--jaune); font-weight:800;"></span>
+                                    </label>
+                                    <span class="count" id="count-slots-remplis">${totalRemplis} / 14</span>
+                                </div>
+                                <div class="search" style="margin:0; position:relative;">
+                                    <input type="text" id="input-saisie-nom" placeholder="Tapez le nom d'un joueur (ex: Loïc, Nicolas...)" autocomplete="off">
+                                    <div id="saisie-dropdown" class="saisie-suggestions-dropdown hidden"></div>
+                                </div>
+                                <small class="muted" style="display:block; margin-top:5px; font-size:.75rem;">
+                                    💡 Tapez les premières lettres et choisissez dans la liste ou appuyez sur <strong>Entrée</strong> pour passer au poste suivant.
+                                </small>
+                            </div>
+
+                            <div class="saisie-slots-container" id="saisie-slots-liste"></div>
+
+                            <div class="modal-actions" style="margin-top:10px;">
+                                <button type="button" class="btn-modal btn-modal-cancel" id="btn-vider-saisie" style="color:var(--rouge);">🗑️ Tout vider</button>
+                                <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-saisie">Annuler</button>
+                                <button type="button" class="btn-modal btn-modal-ok" id="btn-appliquer-saisie">✅ Appliquer la composition</button>
+                            </div>
+                        </div>
+
+                        <!-- VUE 2 : COPIER-COLLER FEUILLE FFF / LISTE TEXTE -->
+                        <div id="vue-copier-coller" class="${ongletActif === 'coller' ? '' : 'hidden'}">
+                            <p class="modal-text" style="margin-bottom:6px;">
+                                <strong>1.</strong> Ouvrez le match sur <strong>epreuves.fff.fr</strong>, faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>.<br>
+                                <strong>2.</strong> Collez ci-dessous (<strong>Ctrl+V</strong>) et cliquez sur <strong>Analyser</strong>.<br>
+                                <small class="muted">Fonctionne aussi en collant la convocation WhatsApp ou une liste de noms.</small>
+                            </p>
+                            <textarea id="txt-noms-compo" rows="8" style="margin-top:6px; font-size:.88rem;" placeholder="Collez ici toute la page epreuves.fff.fr (Ctrl+A puis Ctrl+C)&#10;ou tapez une liste de joueurs…">${echapper(texteMemorise)}</textarea>
+                            <div id="textarea-suggestions" class="saisie-textarea-chips"></div>
+
+                            <div class="modal-actions" style="margin-top:10px;">
+                                <button type="button" class="btn-modal btn-modal-cancel" id="btn-annuler-noms">Annuler</button>
+                                <button type="button" class="btn-modal btn-modal-ok" id="btn-analyser-fff">🔍 Analyser la feuille</button>
+                            </div>
                         </div>
                     `;
 
-                    boite.querySelector('#btn-annuler-noms').onclick = () => fermer(false);
-                    boite.querySelector('#btn-analyser-fff').onclick = () => {
-                        const texte = boite.querySelector('#txt-noms-compo').value;
-                        texteMemorise = texte;
-                        const analyse = parserFeuilleFFF(texte);
-                        if (analyse.titulaires.length === 0 && analyse.remplacants.length === 0) {
-                            toast("Aucun joueur détecté. Vérifiez votre copier-coller depuis epreuves.fff.fr ou saisissez un nom par ligne.", 'error', 4500);
+                    let rafraichirSlots = () => {};
+
+                    // Gestion des onglets
+                    const btnTabSaisie = boite.querySelector('#tab-btn-saisie');
+                    const btnTabColler = boite.querySelector('#tab-btn-coller');
+                    const vueSaisie = boite.querySelector('#vue-saisie-assistee');
+                    const vueColler = boite.querySelector('#vue-copier-coller');
+
+                    btnTabSaisie.onclick = () => {
+                        ongletActif = 'saisie';
+                        btnTabSaisie.classList.add('active');
+                        btnTabColler.classList.remove('active');
+                        vueSaisie.classList.remove('hidden');
+                        vueColler.classList.add('hidden');
+                        rafraichirSlots();
+                        boite.querySelector('#input-saisie-nom')?.focus();
+                    };
+
+                    btnTabColler.onclick = () => {
+                        ongletActif = 'coller';
+                        btnTabColler.classList.add('active');
+                        btnTabSaisie.classList.remove('active');
+                        vueColler.classList.remove('hidden');
+                        vueSaisie.classList.add('hidden');
+                        boite.querySelector('#txt-noms-compo')?.focus();
+                    };
+
+                    // Initialise la vue de saisie assistée
+                    initialiserControlesSaisie();
+
+                    // Initialise la vue copier-coller
+                    initialiserControlesColler();
+                }
+
+                function initialiserControlesSaisie() {
+                    const inputNom = boite.querySelector('#input-saisie-nom');
+                    const dropdown = boite.querySelector('#saisie-dropdown');
+                    const descCible = boite.querySelector('#cible-slot-desc');
+                    const countEl = boite.querySelector('#count-slots-remplis');
+                    const slotsContainer = boite.querySelector('#saisie-slots-liste');
+
+                    function majCibleUI() {
+                        const info = obtenirInfosSlot(slotCible);
+                        if (descCible) {
+                            descCible.textContent = `n°${info.numero} · ${info.label} (${info.code})`;
+                        }
+                        if (countEl) {
+                            const nbTit = Object.keys(slotsTit).length;
+                            const nbRemp = slotsRemp.filter(Boolean).length;
+                            countEl.textContent = `${nbTit + nbRemp} / 14`;
+                        }
+                    }
+
+                    function rendreSlotsListe() {
+                        majCibleUI();
+                        let html = `<div class="fff-import-section">⚽ 11 Titulaires (${echapper(dispositifActif)})</div>`;
+                        for (let i = 0; i < 11; i++) {
+                            const info = obtenirInfosSlot(i);
+                            const jId = slotsTit[i];
+                            const joueur = jId ? joueursMap[jId] : null;
+                            const estActif = i === slotCible;
+                            const playerHtml = joueur
+                                ? `<span class="saisie-slot-player">${echapper(joueur.nomComplet)} <small class="muted">(${echapper(joueur.poste)})</small></span>`
+                                : `<span class="saisie-slot-player empty">— Vide (cliquez pour cibler) —</span>`;
+                            const clearBtn = joueur
+                                ? `<button type="button" class="saisie-slot-clear" data-action="clear-slot" data-slot="${i}" title="Retirer">✕</button>`
+                                : '';
+
+                            html += `
+                                <div class="saisie-slot-item ${estActif ? 'active-target' : ''}" data-slot-idx="${i}">
+                                    <div class="saisie-slot-left">
+                                        <span class="bench-num" style="min-width:26px; height:26px; font-size:.76rem;">${info.numero}</span>
+                                        <span class="saisie-slot-role">${echapper(info.code)}</span>
+                                        ${playerHtml}
+                                    </div>
+                                    <div class="saisie-slot-right">
+                                        ${clearBtn}
+                                    </div>
+                                </div>
+                            `;
+                        }
+
+                        html += `<div class="fff-import-section" style="margin-top:10px;">🪑 Remplaçants (12 à 14)</div>`;
+                        for (let i = 0; i < 3; i++) {
+                            const slotGlobal = 11 + i;
+                            const info = obtenirInfosSlot(slotGlobal);
+                            const jId = slotsRemp[i];
+                            const joueur = jId ? joueursMap[jId] : null;
+                            const estActif = slotGlobal === slotCible;
+                            const playerHtml = joueur
+                                ? `<span class="saisie-slot-player">${echapper(joueur.nomComplet)} <small class="muted">(${echapper(joueur.poste)})</small></span>`
+                                : `<span class="saisie-slot-player empty">— Vide (cliquez pour cibler) —</span>`;
+                            const clearBtn = joueur
+                                ? `<button type="button" class="saisie-slot-clear" data-action="clear-slot" data-slot="${slotGlobal}" title="Retirer">✕</button>`
+                                : '';
+
+                            html += `
+                                <div class="saisie-slot-item ${estActif ? 'active-target' : ''}" data-slot-idx="${slotGlobal}">
+                                    <div class="saisie-slot-left">
+                                        <span class="bench-num" style="min-width:26px; height:26px; font-size:.76rem;">${info.numero}</span>
+                                        <span class="saisie-slot-role">${echapper(info.code)}</span>
+                                        ${playerHtml}
+                                    </div>
+                                    <div class="saisie-slot-right">
+                                        ${clearBtn}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        slotsContainer.innerHTML = html;
+                    }
+
+                    function placerJoueurDansSlot(joueurId) {
+                        const info = obtenirInfosSlot(slotCible);
+                        if (slotCible < 11) {
+                            // Si ce joueur était déjà sur un autre slot, on le libère
+                            for (const [k, v] of Object.entries(slotsTit)) {
+                                if (v === joueurId && parseInt(k, 10) !== slotCible) delete slotsTit[k];
+                            }
+                            const rempIndex = slotsRemp.indexOf(joueurId);
+                            if (rempIndex !== -1) slotsRemp[rempIndex] = null;
+
+                            slotsTit[slotCible] = joueurId;
+                            slotsNum[joueurId] = info.numero;
+                        } else {
+                            const rIdx = slotCible - 11;
+                            // Si déjà titulaire
+                            for (const [k, v] of Object.entries(slotsTit)) {
+                                if (v === joueurId) delete slotsTit[k];
+                            }
+                            const rempIndex = slotsRemp.indexOf(joueurId);
+                            if (rempIndex !== -1 && rempIndex !== rIdx) slotsRemp[rempIndex] = null;
+
+                            slotsRemp[rIdx] = joueurId;
+                            slotsNum[joueurId] = info.numero;
+                        }
+
+                        // Avance automatiquement vers le prochain poste libre
+                        slotCible = trouverPremierSlotLibre();
+                        inputNom.value = '';
+                        dropdown.classList.add('hidden');
+                        dropdown.innerHTML = '';
+                        rendreSlotsListe();
+                        inputNom.focus();
+                    }
+
+                    // Sélection de slot par clic
+                    slotsContainer.onclick = (e) => {
+                        const btnClear = e.target.closest('[data-action="clear-slot"]');
+                        if (btnClear) {
+                            e.stopPropagation();
+                            const s = parseInt(btnClear.dataset.slot, 10);
+                            if (s < 11) {
+                                const jId = slotsTit[s];
+                                delete slotsTit[s];
+                                if (jId) delete slotsNum[jId];
+                            } else {
+                                const rIdx = s - 11;
+                                const jId = slotsRemp[rIdx];
+                                slotsRemp[rIdx] = null;
+                                if (jId) delete slotsNum[jId];
+                            }
+                            slotCible = s;
+                            rendreSlotsListe();
+                            inputNom.focus();
                             return;
                         }
-                        afficherEtape2(analyse);
+
+                        const item = e.target.closest('.saisie-slot-item');
+                        if (item) {
+                            slotCible = parseInt(item.dataset.slotIdx, 10);
+                            rendreSlotsListe();
+                            inputNom.focus();
+                        }
                     };
+
+                    // Autocomplétion dynamique en temps réel au fur et à mesure de la frappe
+                    let indexSelectionne = -1;
+
+                    function majSuggestions(q = '') {
+                        const brut = q.trim();
+                        if (brut.length === 0) {
+                            dropdown.classList.add('hidden');
+                            dropdown.innerHTML = '';
+                            indexSelectionne = -1;
+                            return;
+                        }
+
+                        const normQ = normaliserNom(brut);
+                        const slotInfo = obtenirInfosSlot(slotCible);
+
+                        const matches = listeTousLesJoueurs.map(j => {
+                            const normNom = normaliserNom(j.nomComplet);
+                            const normPrenom = normaliserNom(j.prenom);
+                            const normFamille = normaliserNom(j.nom);
+                            let score = 0;
+
+                            if (normNom.startsWith(normQ)) score += 30;
+                            else if (normPrenom.startsWith(normQ) || normFamille.startsWith(normQ)) score += 25;
+                            else if (normNom.includes(normQ)) score += 15;
+                            else return null;
+
+                            // Bonus poste recommandé
+                            if ((j.poste || '').toLowerCase() === slotInfo.categorie.toLowerCase()) score += 10;
+
+                            // Bonus non encore sélectionné
+                            const dejaTit = Object.values(slotsTit).includes(j.id);
+                            const dejaRemp = slotsRemp.includes(j.id);
+                            if (!dejaTit && !dejaRemp) score += 5;
+
+                            return {
+                                joueur: j,
+                                score,
+                                dejaTit,
+                                dejaRemp,
+                                apparitions: compteursApparitions[j.id]?.[equipeActive] || 0
+                            };
+                        }).filter(Boolean).sort((a, b) => b.score - a.score || b.apparitions - a.apparitions).slice(0, 6);
+
+                        if (matches.length === 0) {
+                            dropdown.innerHTML = `
+                                <div class="cselect-empty" style="padding:10px 8px; font-size:.82rem;">Aucun joueur trouvé pour « ${echapper(brut)} »</div>
+                                <button type="button" class="cselect-option" data-action="creer-joueur" data-nom="${echapper(brut)}">
+                                    <span class="cselect-texts">
+                                        <span class="cselect-title">➕ Créer « ${echapper(brut)} »</span>
+                                        <span class="cselect-sub">Créer ce joueur et le placer à ce poste</span>
+                                    </span>
+                                </button>
+                            `;
+                            dropdown.classList.remove('hidden');
+                            indexSelectionne = 0;
+                            return;
+                        }
+
+                        dropdown.innerHTML = matches.map((m, idx) => {
+                            const j = m.joueur;
+                            let badge = '';
+                            if (m.dejaTit || m.dejaRemp) {
+                                badge = `<span class="cselect-badge warn" style="font-size:.7rem;">Déjà placé</span>`;
+                            } else if ((j.poste || '').toLowerCase() === slotInfo.categorie.toLowerCase()) {
+                                badge = `<span class="cselect-badge ok" style="font-size:.7rem;">✓ ${echapper(j.poste)}</span>`;
+                            }
+                            const numTag = j.numero ? ` · n°${j.numero}` : '';
+                            return `
+                                <button type="button" class="cselect-option ${idx === 0 ? 'active' : ''}" data-pick-id="${echapper(j.id)}" data-opt-idx="${idx}">
+                                    <span class="avatar" style="width:28px; height:28px; font-size:.72rem;">${echapper(initiales(j.prenom, j.nom))}</span>
+                                    <span class="cselect-texts">
+                                        <span class="cselect-title">${echapper(j.nomComplet)}</span>
+                                        <span class="cselect-sub">${echapper(j.poste)}${numTag} · ${m.apparitions} match(s)</span>
+                                    </span>
+                                    ${badge}
+                                </button>
+                            `;
+                        }).join('');
+
+                        dropdown.classList.remove('hidden');
+                        indexSelectionne = 0;
+                    }
+
+                    inputNom.addEventListener('input', (e) => {
+                        majSuggestions(e.target.value);
+                    });
+
+                    inputNom.addEventListener('keydown', (e) => {
+                        const options = dropdown.querySelectorAll('.cselect-option');
+                        if (dropdown.classList.contains('hidden') || options.length === 0) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                majSuggestions(inputNom.value);
+                            }
+                            return;
+                        }
+
+                        if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            indexSelectionne = (indexSelectionne + 1) % options.length;
+                            options.forEach((opt, idx) => opt.classList.toggle('active', idx === indexSelectionne));
+                        } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            indexSelectionne = (indexSelectionne - 1 + options.length) % options.length;
+                            options.forEach((opt, idx) => opt.classList.toggle('active', idx === indexSelectionne));
+                        } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const cibleBtn = options[indexSelectionne] || options[0];
+                            if (cibleBtn) cibleBtn.click();
+                        } else if (e.key === 'Escape') {
+                            dropdown.classList.add('hidden');
+                        }
+                    });
+
+                    dropdown.addEventListener('click', async (e) => {
+                        const opt = e.target.closest('.cselect-option');
+                        if (!opt) return;
+
+                        if (opt.dataset.action === 'creer-joueur') {
+                            const nomBrut = opt.dataset.nom;
+                            const slotInfo = obtenirInfosSlot(slotCible);
+                            try {
+                                toast("Création du joueur en cours…", 'info');
+                                const nouveauId = await creerJoueurEffectif({ nomBrut, poste: slotInfo.categorie });
+                                await initialiserPage();
+                                placerJoueurDansSlot(nouveauId);
+                                toast(`Joueur « ${nomBrut} » créé et placé !`);
+                            } catch (err) {
+                                toast("Erreur création : " + err.message, 'error');
+                            }
+                            return;
+                        }
+
+                        const jId = opt.dataset.pickId;
+                        if (jId) {
+                            placerJoueurDansSlot(jId);
+                        }
+                    });
+
+                    // Clics boutons du bas
+                    boite.querySelector('#btn-annuler-saisie').onclick = () => fermer(false);
+
+                    boite.querySelector('#btn-vider-saisie').onclick = () => {
+                        slotsTit = {};
+                        slotsRemp = [];
+                        slotsNum = {};
+                        slotCible = 0;
+                        rendreSlotsListe();
+                        toast("Composition vidée.", 'info');
+                    };
+
+                    boite.querySelector('#btn-appliquer-saisie').onclick = async () => {
+                        const nbTit = Object.keys(slotsTit).length;
+                        const rempActifs = slotsRemp.filter(Boolean);
+                        if (nbTit === 0 && rempActifs.length === 0) {
+                            toast("Veuillez sélectionner au moins un joueur.", 'error');
+                            return;
+                        }
+
+                        const btnOk = boite.querySelector('#btn-appliquer-saisie');
+                        chargement(btnOk, true, 'Enregistrement…');
+                        try {
+                            titulaires = { ...slotsTit };
+                            remplacants = [ ...rempActifs ];
+                            numeros = { ...slotsNum };
+
+                            rafraichirVueTactique();
+                            await sauvegarderCompoAuto();
+
+                            toast(`Composition validée : ${nbTit} titulaire(s), ${remplacants.length} remplaçant(s) !`);
+                            fermer(true);
+                        } catch (err) {
+                            console.error(err);
+                            toast("Erreur sauvegarde : " + err.message, 'error');
+                            chargement(btnOk, false);
+                        }
+                    };
+
+                    rafraichirSlots = rendreSlotsListe;
+                    rendreSlotsListe();
+                }
+
+                function initialiserControlesColler() {
+                    const txtArea = boite.querySelector('#txt-noms-compo');
+                    const zoneChips = boite.querySelector('#textarea-suggestions');
+                    const btnAnalyser = boite.querySelector('#btn-analyser-fff');
+                    const btnAnnuler = boite.querySelector('#btn-annuler-noms');
+
+                    if (btnAnnuler) btnAnnuler.onclick = () => fermer(false);
+
+                    // Suggestions interactives lors de la frappe dans la zone de texte
+                    if (txtArea && zoneChips) {
+                        const detecterSuggestionsTextarea = () => {
+                            const val = txtArea.value;
+                            const pos = txtArea.selectionStart || val.length;
+                            const avant = val.slice(0, pos);
+                            const ligneCourante = avant.split('\n').pop().replace(/^\s*\d+[\s.)-]*\s*/, '').trim();
+
+                            if (ligneCourante.length < 2) {
+                                zoneChips.innerHTML = '';
+                                return;
+                            }
+
+                            const normLigne = normaliserNom(ligneCourante);
+                            const matches = listeTousLesJoueurs
+                                .filter(j => normaliserNom(j.nomComplet).includes(normLigne))
+                                .slice(0, 4);
+
+                            if (matches.length === 0) {
+                                zoneChips.innerHTML = '';
+                                return;
+                            }
+
+                            zoneChips.innerHTML = `
+                                <span class="muted" style="font-size:.76rem; margin-right:4px;">💡 Suggestions :</span>
+                                ${matches.map(j => `
+                                    <button type="button" class="btn-chip" data-chip-nom="${echapper(j.nomComplet)}" style="padding:4px 8px; font-size:.78rem;">
+                                        ➕ ${echapper(j.nomComplet)} <small class="muted">(${echapper(j.poste)})</small>
+                                    </button>
+                                `).join('')}
+                            `;
+                        };
+
+                        txtArea.addEventListener('input', detecterSuggestionsTextarea);
+                        txtArea.addEventListener('keyup', detecterSuggestionsTextarea);
+                        txtArea.addEventListener('click', detecterSuggestionsTextarea);
+
+                        zoneChips.addEventListener('click', (e) => {
+                            const chip = e.target.closest('[data-chip-nom]');
+                            if (!chip) return;
+                            const nomChoisi = chip.dataset.chipNom;
+
+                            const val = txtArea.value;
+                            const pos = txtArea.selectionStart || val.length;
+                            const debutLigne = val.lastIndexOf('\n', pos - 1) + 1;
+                            let finLigne = val.indexOf('\n', pos);
+                            if (finLigne === -1) finLigne = val.length;
+
+                            const ligneActuelle = val.slice(debutLigne, finLigne);
+                            const prefixNum = ligneActuelle.match(/^\s*(\d+[\s.)-]*)/)?.[1] || '';
+
+                            const nouvelleLigne = `${prefixNum}${nomChoisi}\n`;
+                            txtArea.value = val.slice(0, debutLigne) + nouvelleLigne + val.slice(finLigne === val.length ? finLigne : finLigne + 1);
+
+                            const newPos = debutLigne + nouvelleLigne.length;
+                            txtArea.setSelectionRange(newPos, newPos);
+                            txtArea.focus();
+                            zoneChips.innerHTML = '';
+                        });
+                    }
+
+                    if (btnAnalyser) {
+                        btnAnalyser.onclick = () => {
+                            const texte = txtArea.value;
+                            texteMemorise = texte;
+                            const analyse = parserFeuilleFFF(texte);
+                            if (analyse.titulaires.length === 0 && analyse.remplacants.length === 0) {
+                                toast("Aucun joueur détecté. Vérifiez votre saisie ou collez une feuille complète.", 'error', 4500);
+                                return;
+                            }
+                            afficherEtape2(analyse);
+                        };
+                    }
                 }
 
                 function afficherEtape2(analyse) {

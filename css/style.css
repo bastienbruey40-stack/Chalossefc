@@ -1281,3 +1281,148 @@ a.player-history-item:hover { border-color: var(--jaune); }
     flex-shrink: 0;
 }
 
+/* =========================================================
+   SAISIE MANUELLE ASSISTÉE AVEC SUGGESTIONS (GERER_COMPO)
+   ========================================================= */
+.saisie-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 14px;
+}
+.saisie-tab-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 12px;
+    font-size: .84rem;
+    font-weight: 700;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--texte-2);
+    cursor: pointer;
+    transition: all .15s ease;
+}
+.saisie-tab-btn:hover {
+    color: var(--texte);
+    border-color: var(--jaune);
+}
+.saisie-tab-btn.active {
+    background: var(--jaune-doux);
+    color: var(--texte);
+    border-color: var(--jaune);
+}
+.saisie-search-box {
+    position: relative;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    text-align: left;
+}
+.saisie-search-box.focused {
+    border-color: var(--jaune);
+}
+.saisie-suggestions-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 100;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.saisie-suggestions-dropdown.hidden {
+    display: none !important;
+}
+.saisie-slots-container {
+    max-height: 38vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding-right: 2px;
+    margin-bottom: 12px;
+}
+.saisie-slot-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 7px 10px;
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+}
+.saisie-slot-item:hover {
+    border-color: color-mix(in srgb, var(--jaune) 50%, var(--border));
+}
+.saisie-slot-item.active-target {
+    border-color: var(--jaune);
+    background: var(--jaune-doux);
+}
+.saisie-slot-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+.saisie-slot-role {
+    font-size: .75rem;
+    font-weight: 700;
+    color: var(--texte-2);
+    min-width: 68px;
+}
+.saisie-slot-player {
+    font-size: .88rem;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.saisie-slot-player.empty {
+    color: var(--texte-3);
+    font-weight: 500;
+    font-style: italic;
+    font-size: .82rem;
+}
+.saisie-slot-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.saisie-slot-clear {
+    background: none;
+    border: none;
+    color: var(--rouge);
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: .8rem;
+    cursor: pointer;
+}
+.saisie-slot-clear:hover {
+    background: var(--rouge-doux);
+}
+.saisie-textarea-chips {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    min-height: 28px;
+}
+
+
