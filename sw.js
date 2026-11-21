@@ -1,5 +1,5 @@
-// Service Worker PWA - FC Chalosse (Stale-While-Revalidate pour les ressources statiques, Network-First pour les pages)
-const CACHE_NAME = 'chalosse-v28';
+// Service Worker PWA - FC Chalosse (Network-First pour le code HTML/CSS/JS, Stale-While-Revalidate pour les images)
+const CACHE_NAME = 'chalosse-v29';
 const ASSETS = [
     './',
     './index.html',
@@ -47,10 +47,9 @@ self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;
 
-    const estDonneeDynamique = url.pathname.includes('/data/');
-    const estRessourceStatique = !estDonneeDynamique && /\.(?:css|js|webp|png|jpe?g|svg|json|ico|woff2?)$/i.test(url.pathname);
+    const estImageOuPolice = /\.(?:webp|png|jpe?g|svg|ico|woff2?)$/i.test(url.pathname);
 
-    if (estRessourceStatique) {
+    if (estImageOuPolice) {
         // Stale-While-Revalidate : réponse instantanée depuis le cache + mise à jour en arrière-plan
         e.respondWith(
             caches.open(CACHE_NAME).then((cache) =>
