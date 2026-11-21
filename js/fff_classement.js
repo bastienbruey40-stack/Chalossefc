@@ -7,6 +7,33 @@ export const CLUB_FFF_ID = 529258;
 export const URL_FFF_CLUB = `https://epreuves.fff.fr/club/${CLUB_FFF_ID}`;
 const API_BASE = 'https://api-dofa.fff.fr/api';
 
+// Classement officiel FFF pré-embarqué (Séniors Départemental 2 · Poule A - Journée 7)
+// Sert d'affichage immédiat tant qu'une mise à jour plus récente n'a pas été enregistrée dans Firestore.
+export const CLASSEMENTS_FFF_DEFAUT = {
+    premiere: {
+        competition: 'Séniors Départemental 2 · Poule A',
+        poule: 'Poule A',
+        journee: 7,
+        source: 'fff-defaut',
+        maj: '2026-11-21T18:00:00.000Z',
+        lignes: [
+            { rang: 1,  equipe: 'DEUX LEYRES FC',         points: 19, joues: 7, gagnes: 6, nuls: 1, perdus: 0, forfaits: 0, bp: 30, bc: 8,  diff: 22,  estChalosse: false },
+            { rang: 2,  equipe: 'STADE MONTOIS 2',        points: 16, joues: 7, gagnes: 5, nuls: 1, perdus: 1, forfaits: 0, bp: 19, bc: 3,  diff: 16,  estChalosse: false },
+            { rang: 3,  equipe: 'ARMAGNAC US',            points: 15, joues: 7, gagnes: 5, nuls: 0, perdus: 2, forfaits: 0, bp: 13, bc: 18, diff: -5,  estChalosse: false },
+            { rang: 4,  equipe: 'BRETAGNE AS',            points: 13, joues: 7, gagnes: 4, nuls: 1, perdus: 2, forfaits: 0, bp: 24, bc: 20, diff: 4,   estChalosse: false },
+            { rang: 5,  equipe: 'LABENNE OSC 2',          points: 13, joues: 7, gagnes: 4, nuls: 1, perdus: 2, forfaits: 0, bp: 19, bc: 15, diff: 4,   estChalosse: false },
+            { rang: 6,  equipe: 'ST-PAUL DESPO',          points: 10, joues: 7, gagnes: 3, nuls: 1, perdus: 3, forfaits: 0, bp: 18, bc: 17, diff: 1,   estChalosse: false },
+            { rang: 7,  equipe: 'ST PIERRE DU MONT SC 2', points: 10, joues: 7, gagnes: 3, nuls: 1, perdus: 3, forfaits: 0, bp: 20, bc: 16, diff: 4,   estChalosse: false },
+            { rang: 8,  equipe: 'CHALOSSE FC LAUREDE',    points: 10, joues: 7, gagnes: 3, nuls: 1, perdus: 3, forfaits: 0, bp: 15, bc: 13, diff: 2,   estChalosse: true  },
+            { rang: 9,  equipe: 'FC ST GEOURS 2',         points: 8,  joues: 7, gagnes: 2, nuls: 2, perdus: 3, forfaits: 0, bp: 14, bc: 15, diff: -1,  estChalosse: false },
+            { rang: 10, equipe: 'MARENSIN FC 2',          points: 6,  joues: 7, gagnes: 2, nuls: 0, perdus: 5, forfaits: 0, bp: 14, bc: 25, diff: -11, estChalosse: false },
+            { rang: 11, equipe: 'HAGETMAU FC 2',          points: 1,  joues: 7, gagnes: 0, nuls: 1, perdus: 6, forfaits: 0, bp: 6,  bc: 23, diff: -17, estChalosse: false },
+            { rang: 12, equipe: 'LALUQUE RION JSFC',      points: 0,  joues: 7, gagnes: 0, nuls: 0, perdus: 7, forfaits: 0, bp: 8,  bc: 27, diff: -19, estChalosse: false }
+        ].map(l => ({ ...l, logo: trouverLogoClub(l.equipe) }))
+    },
+    reserve: null
+};
+
 function normaliser(str) {
     return String(str || '')
         .normalize('NFD')
