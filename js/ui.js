@@ -342,9 +342,11 @@ export function chargement(bouton, actif, texte = 'Enregistrement…') {
 }
 
 /* ---------- Dates & texte ---------- */
-// Accepte "AAAA-MM-JJ", "JJ/MM/AAAA" ou "JJ/MM/AA"
+// Accepte "AAAA-MM-JJ", "JJ/MM/AAAA", "JJ/MM/AA" ou Timestamp Firestore
 export function versDate(str) {
     if (!str) return null;
+    if (typeof str === 'object' && typeof str.toDate === 'function') return str.toDate();
+    if (str instanceof Date) return isNaN(str) ? null : str;
     const s = String(str).trim();
     let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
     if (m) return new Date(+m[1], +m[2] - 1, +m[3], 15);

@@ -307,14 +307,28 @@ export function parserClassementFFF(texteBrut) {
     };
 
     // 1. Passe "1 ligne par équipe" (séparée par espaces ou tabulations complètes)
+    //    Gère aussi les équipes réserves finissant par un chiffre (ex: "2 STADE MONTOIS 2 16 7 5 1 1 0 0 19 3 16")
     const lignesMono = [];
     for (const l of rawLines) {
-        const mLigne = l.match(/^(\d{1,2})[\t ]+(?:[↑↓▲▼+-]?\s*\d{1,2}[\t ]+)?(?:undefined[\t ]+)?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\s.'-]{1,50}?)[\t ]+((?:[+-]?\d{1,3}[\t ]+){6,9}[+-]?\d{1,3})(?:[\t ]+.*)?$/i);
+        const mLigne = l.match(/^(\d{1,2})[\t ]+(?:[↑↓▲▼+-]?\s*\d{1,2}[\t ]+)?(?:undefined[\t ]+)?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9\s.'-]{1,50}?)[\t ]+((?:[+-]?\d{1,3}[\t ]+){6,10}[+-]?\d{1,3})(?:[\t ]+[^\d\t +-].*)?$/i);
         if (mLigne) {
             const rang = parseInt(mLigne[1], 10);
-            const equipe = mLigne[2].trim();
+            let equipe = mLigne[2].trim();
+            let nums = mLigne[3].trim().split(/[\t ]+/).map(v => parseInt(v.replace('+', ''), 10));
+
+            // Si un chiffre de numéro d'équipe (1..5) a été aspiré au début des statistiques,
+            // on le rattache au nom d'équipe (ex: "STADE MONTOIS" + "2" -> "STADE MONTOIS 2").
+            if (nums.length >= 8 && nums[0] >= 1 && nums[0] <= 5) {
+                const sansPremier = nums.slice(1);
+                const coherentAvec = nums[1] === nums[2] + nums[3] + nums[4] && nums.length <= 10;
+                const coherentSans = sansPremier.length >= 7 && sansPremier[1] === sansPremier[2] + sansPremier[3] + sansPremier[4];
+                if (nums.length === 11 || (!coherentAvec && coherentSans)) {
+                    equipe = `${equipe} ${nums[0]}`;
+                    nums = sansPremier;
+                }
+            }
+
             if (rang >= 1 && rang <= 24 && estNomEquipeValide(equipe)) {
-                const nums = mLigne[3].trim().split(/[\t ]+/).map(v => parseInt(v.replace('+', ''), 10));
                 const parsed = mapNombresClassement(rang, equipe, nums);
                 if (parsed) lignesMono.push(parsed);
             }

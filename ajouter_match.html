@@ -51,6 +51,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil, invaliderCache } from "./js/firebase.js";
         import { toast, flash, chargement } from "./js/ui.js";
+        import { trouverLogoClub } from "./js/logos_clubs.js";
 
         let equipeChoisie = 'premiere';
 
@@ -83,7 +84,8 @@
                     equipe_type: equipeChoisie,
                     adversaire: adversaire,
                     date: date,
-                    logo: document.getElementById('logo').value.trim(),
+                    logo: document.getElementById('logo').value.trim() || trouverLogoClub(adversaire),
+                    modifie_manuellement: true,
                     compo: []
                 });
                 invaliderCache("matchs");

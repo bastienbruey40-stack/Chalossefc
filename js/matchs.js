@@ -7,7 +7,13 @@ import { trouverLogoClub, rendreLogoClubHTML } from "./logos_clubs.js";
 const cache = new Map();
 
 export function estJoue(d) {
-    return d.score_chalosse !== undefined && d.score_chalosse !== null;
+    return Boolean(
+        d &&
+        d.score_chalosse !== undefined &&
+        d.score_chalosse !== null &&
+        d.score_chalosse !== '' &&
+        !isNaN(Number(d.score_chalosse))
+    );
 }
 
 export function trierParDate(liste) {
@@ -150,11 +156,17 @@ export function editerMatchComplet(id, d) {
                 return;
             }
 
+            const estLogoAutoAncien = !logo || logo === d.logo && (/cdn-transverse\.azureedge\.net\/phlogos\//i.test(logo) || logo === 'chalosse.webp');
+            const logoResolu = estLogoAutoAncien
+                ? (trouverLogoClub(adversaire) || logo)
+                : logo;
+
             const maj = {
                 equipe_type: equipeChoisie,
                 adversaire: adversaire,
                 date: date,
-                logo: logo || trouverLogoClub(adversaire)
+                logo: logoResolu,
+                modifie_manuellement: true
             };
 
             if (valC === '' && valA === '') {

@@ -97,12 +97,18 @@
             const btn = document.getElementById('btn-import-fff');
             chargement(btn, true, 'Sync. FFF…');
             try {
-                const { ajoutes, misAJour } = await importerMatchsFFF();
-                if (ajoutes === 0 && misAJour === 0) {
-                    toast("Tous les matchs FFF sont déjà à jour !", 'info');
+                const { ajoutes, misAJour, logosAjoutes, doublonsSupprimes, proteges } = await importerMatchsFFF();
+                const totalModifs = ajoutes + misAJour + logosAjoutes + doublonsSupprimes;
+                if (totalModifs === 0) {
+                    toast(`Calendrier déjà à jour (${proteges} match(s) avec scores/compos conservés intacts).`, 'info', 4500);
                 } else {
                     invaliderCache("matchs");
-                    toast(`Synchronisé : ${ajoutes} match(s) ajouté(s), ${misAJour} score(s) mis à jour (compos conservées).`);
+                    const details = [];
+                    if (ajoutes > 0) details.push(`${ajoutes} ajouté(s)`);
+                    if (misAJour > 0) details.push(`${misAJour} mis à jour`);
+                    if (doublonsSupprimes > 0) details.push(`${doublonsSupprimes} doublon(s) vide(s) nettoyé(s)`);
+                    if (logosAjoutes > 0) details.push(`${logosAjoutes} logo(s)`);
+                    toast(`Sync. FFF : ${details.join(', ')} (${proteges} match(s) scores/compos conservés).`, 'success', 5000);
                     await chargerMatchs(true);
                 }
             } catch (e) {
