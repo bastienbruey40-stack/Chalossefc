@@ -30,7 +30,6 @@
             </div>
             <div class="toolbar-actions">
                 <button type="button" class="btn-chip primary hidden" id="btn-import-manuel">📋 Mettre à jour depuis FFF</button>
-                <a href="https://epreuves.fff.fr/club/529258" target="_blank" rel="noopener" class="btn-chip">🌐 Site FFF</a>
             </div>
         </div>
 
@@ -66,7 +65,7 @@
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil, lireDoc, invaliderCache } from "./js/firebase.js";
         import { toast, ouvrirModal, chargement, echapper } from "./js/ui.js";
-        import { parserClassementFFF, estEquipeChalosse, URL_FFF_CLUB, CLASSEMENTS_FFF_DEFAUT } from "./js/fff_classement.js";
+        import { parserClassementFFF, estEquipeChalosse, CLASSEMENTS_FFF_DEFAUT } from "./js/fff_classement.js";
         import { lireClassementDepuisImage } from "./js/fff_ocr.js";
         import { rendreLogoClubHTML, trouverLogoClub } from "./js/logos_clubs.js";
 
@@ -182,8 +181,8 @@
                 boite.innerHTML = `
                     <h3 class="modal-title">📋 Importer le classement · ${echapper(labelEquipe)}</h3>
                     <p class="modal-text">
-                        <strong>Option 1 (instantané) :</strong> sur <a href="${URL_FFF_CLUB}" target="_blank" rel="noopener">epreuves.fff.fr</a>, faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>, et collez ci-dessous (<strong>Ctrl+V</strong>).<br>
-                        <strong>Option 2 (capture d'écran) :</strong> cliquez sur <strong>📸 Capture d'écran</strong> ou collez directement votre capture avec <strong>Ctrl+V</strong>.
+                        <strong>Option 1 (instantané) :</strong> sur le site FFF (epreuves.fff.fr), faites <strong>Ctrl+A</strong> puis <strong>Ctrl+C</strong>, et collez ci-dessous (<strong>Ctrl+V</strong>).<br>
+                        <strong>Option 2 (capture d'écran) :</strong> cliquez sur <strong>📸 Choisir une capture d'écran</strong> ou collez directement votre capture avec <strong>Ctrl+V</strong>.
                     </p>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin: 10px 0 6px;">
                         <label for="input-img-classement" class="btn-chip" style="cursor:pointer; margin:0;">
