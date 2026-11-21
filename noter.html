@@ -31,7 +31,7 @@
     <script type="module">
         import { doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth } from "./js/firebase.js";
+        import { db, auth, lireDoc, invaliderCache } from "./js/firebase.js";
         import { toast, flash } from "./js/ui.js";
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -53,9 +53,9 @@
 
         async function chargerJoueur() {
             if (!joueurId) return;
-            const snap = await getDoc(doc(db, "utilisateurs", joueurId));
-            document.getElementById('nom-joueur').textContent = snap.exists()
-                ? `Noter ${snap.data().prenom} ${snap.data().nom}` : "Joueur introuvable";
+            const res = await lireDoc("utilisateurs", joueurId);
+            document.getElementById('nom-joueur').textContent = res
+                ? `Noter ${res.data.prenom} ${res.data.nom}` : "Joueur introuvable";
         }
         chargerJoueur();
 
@@ -90,6 +90,7 @@
                     note: valeurNote,
                     date: new Date().toISOString()
                 });
+                invaliderCache("notes");
                 flash("Note enregistrée !");
                 window.location.href = `match_detail.html?match=${matchId}`;
             } catch (err) {

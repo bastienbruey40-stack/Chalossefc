@@ -38,11 +38,11 @@
             <table>
                 <thead>
                     <tr id="entete-table">
-                        <th data-tri="nom">Joueur</th>
+                        <th data-tri="nom" class="trie asc">Joueur</th>
                         <th data-tri="mj" title="Matchs joués">MJ</th>
-                        <th data-tri="buts" title="Buts" class="trie">⚽ Buts</th>
+                        <th data-tri="buts" title="Buts">⚽ Buts</th>
                         <th data-tri="passes" title="Passes décisives">🎯 Passes</th>
-                        <th data-tri="moyenne" title="Note moyenne">⭐ Moy.</th>
+                        <th id="th-moyenne" data-tri="moyenne" class="hidden" title="Note moyenne">⭐ Moy.</th>
                         <th data-tri="jaunes" title="Cartons jaunes">🟨</th>
                         <th data-tri="rouges" title="Cartons rouges">🟥</th>
                         <th id="th-admin" class="hidden" title="Supprimer les stats du joueur">Action</th>
@@ -54,42 +54,56 @@
             </table>
         </div>
         <div class="legende">
-            <span>MJ : matchs joués</span><span>⚽ buts</span><span>🎯 passes décisives</span><span>⭐ note moyenne des votes</span>
+            <span>MJ : matchs joués</span><span>⚽ buts</span><span>🎯 passes décisives</span><span id="legende-moyenne" class="hidden">⭐ note moyenne des votes</span>
         </div>
     </main>
 
     <script type="module">
         import { collection, getDocs, doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur, estSuperAdmin, lireCollection, invaliderCache } from "./js/firebase.js";
         import { toast, confirmer, ouvrirModal, chargement, echapper } from "./js/ui.js";
         import { ouvrirFicheJoueur } from "./js/tactique.js";
 
         let estAdmin = false;
+        let estSuper = false;
         let liste = [];
-        let cleTri = 'buts';
+        let cleTri = 'nom';
+        let ordreTri = 'asc';
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
-            const profil = await chargerProfil(user.uid).catch(() => null);
+            estSuper = estSuperAdmin(user.email);
+            if (estSuper) {
+                document.getElementById('th-moyenne').classList.remove('hidden');
+                document.getElementById('legende-moyenne').classList.remove('hidden');
+            }
+            const [profil] = await Promise.all([
+                chargerProfil(user.uid).catch(() => null),
+                calculerStats()
+            ]);
             estAdmin = profil?.role === "admin";
             if (estAdmin) {
                 document.getElementById('outils-admin-stats').classList.remove('hidden');
                 document.getElementById('th-admin').classList.remove('hidden');
             }
-            calculerStats();
+            if (estAdmin || estSuper) afficher();
         });
 
-        async function calculerStats() {
+        async function calculerStats(force = false) {
             try {
-                // 1. Tous les joueurs
-                const joueursRef = await getDocs(collection(db, "utilisateurs"));
+                // Chargement parallèle des 3 collections en une seule passe
+                const [joueursItems, matchsItems, notesItems] = await Promise.all([
+                    lireCollection("utilisateurs", { force }),
+                    lireCollection("matchs", { force }),
+                    lireCollection("notes", { force })
+                ]);
+
                 const statsGlobales = {};
-                joueursRef.forEach(d => {
-                    const data = d.data();
+                joueursItems.forEach(({ id, data }) => {
                     if (estProfilJoueur(data)) {
-                        statsGlobales[d.id] = {
-                            id: d.id,
+                        statsGlobales[id] = {
+                            id,
                             nom: `${data.prenom} ${data.nom || ''}`.trim(),
                             mj: 0, buts: 0, passes: 0, jaunes: 0, rouges: 0,
                             totalNotes: 0, nbVotes: 0
@@ -97,10 +111,7 @@
                     }
                 });
 
-                // 2. Matchs : MJ, buts, passes, cartons
-                const matchsRef = await getDocs(collection(db, "matchs"));
-                matchsRef.forEach(d => {
-                    const m = d.data();
+                matchsItems.forEach(({ data: m }) => {
                     (m.compo || []).forEach(id => { if (statsGlobales[id]) statsGlobales[id].mj++; });
                     const sMatch = m.stats_joueurs || {};
                     for (const id in sMatch) {
@@ -113,11 +124,8 @@
                     }
                 });
 
-                // 3. Notes : moyenne
-                const notesRef = await getDocs(collection(db, "notes"));
-                notesRef.forEach(d => {
-                    const n = d.data();
-                    const joueurId = n.joueurId || n.joueur_id || d.id.split('_')[1];
+                notesItems.forEach(({ id: docId, data: n }) => {
+                    const joueurId = n.joueurId || n.joueur_id || docId.split('_')[1];
                     if (statsGlobales[joueurId]) {
                         statsGlobales[joueurId].totalNotes += parseFloat(n.note);
                         statsGlobales[joueurId].nbVotes++;
@@ -139,20 +147,34 @@
 
         function afficher() {
             const q = document.getElementById('recherche').value.trim().toLowerCase();
+            const sens = ordreTri === 'asc' ? 1 : -1;
             const lignes = liste
                 .filter(s => s.nom.toLowerCase().includes(q))
-                .sort((a, b) => cleTri === 'nom'
-                    ? a.nom.localeCompare(b.nom)
-                    : (b[cleTri] - a[cleTri]) || (b.buts - a.buts) || (b.mj - a.mj));
+                .sort((a, b) => {
+                    if (cleTri === 'nom') {
+                        return a.nom.localeCompare(b.nom, 'fr') * sens;
+                    }
+                    if (cleTri === 'moyenne') {
+                        const aSans = a.moyenne < 0, bSans = b.moyenne < 0;
+                        if (aSans && bSans) return a.nom.localeCompare(b.nom, 'fr');
+                        if (aSans) return 1;
+                        if (bSans) return -1;
+                    }
+                    const diff = (a[cleTri] - b[cleTri]) * sens;
+                    return diff !== 0 ? diff : a.nom.localeCompare(b.nom, 'fr');
+                });
 
             const corps = document.getElementById('corps-table');
-            const nbCols = estAdmin ? 8 : 7;
+            const nbCols = 6 + (estSuper ? 1 : 0) + (estAdmin ? 1 : 0);
             if (lignes.length === 0) {
                 corps.innerHTML = `<tr><td colspan="${nbCols}" class="muted">${q ? 'Aucun joueur ne correspond.' : 'Aucun joueur dans la base de données.'}</td></tr>`;
                 return;
             }
             corps.innerHTML = lignes.map(s => {
                 const aDesStats = s.buts > 0 || s.passes > 0 || s.jaunes > 0 || s.rouges > 0 || s.moyenne >= 0 || s.mj > 0;
+                const colMoyenne = estSuper
+                    ? `<td style="font-weight:700">${s.moyenne >= 0 ? s.moyenne.toFixed(1) : '<span class="c-zero">–</span>'}</td>`
+                    : '';
                 const colAdmin = estAdmin
                     ? `<td>
                         <button type="button" class="btn-supprimer btn-reset-joueur" data-id="${s.id}" data-nom="${echapper(s.nom)}"
@@ -166,7 +188,7 @@
                         <td>${s.mj}</td>
                         ${cellule(s.buts, 'c-buts')}
                         ${cellule(s.passes, 'c-passes')}
-                        <td style="font-weight:700">${s.moyenne >= 0 ? s.moyenne.toFixed(1) : '<span class="c-zero">–</span>'}</td>
+                        ${colMoyenne}
                         ${cellule(s.jaunes, 'c-jaunes')}
                         ${cellule(s.rouges, 'c-rouges')}
                         ${colAdmin}
@@ -247,9 +269,10 @@
                         }
 
                         await Promise.all(promesses);
+                        invaliderCache("matchs", "notes");
                         toast(`Statistiques de ${nomJoueur} supprimées.`);
                         fermer(true);
-                        calculerStats();
+                        calculerStats(true);
                     } catch (err) {
                         console.error(err);
                         toast("Erreur : " + err.message, 'error');
@@ -294,8 +317,9 @@
                     promesses.push(deleteDoc(doc(db, "notes", nDoc.id)));
                 });
                 await Promise.all(promesses);
+                invaliderCache("matchs", "notes");
                 toast("Toutes les statistiques et notes ont été remises à zéro.");
-                calculerStats();
+                calculerStats(true);
             } catch (err) {
                 toast("Erreur : " + err.message, 'error');
             } finally {
@@ -304,8 +328,18 @@
         });
 
         document.querySelectorAll('th[data-tri]').forEach(th => th.addEventListener('click', () => {
-            cleTri = th.dataset.tri;
-            document.querySelectorAll('th[data-tri]').forEach(t => t.classList.toggle('trie', t === th));
+            const nouvelleCle = th.dataset.tri;
+            if (nouvelleCle === 'moyenne' && !estSuper) return;
+            if (cleTri === nouvelleCle) {
+                ordreTri = ordreTri === 'asc' ? 'desc' : 'asc';
+            } else {
+                cleTri = nouvelleCle;
+                ordreTri = cleTri === 'nom' ? 'asc' : 'desc';
+            }
+            document.querySelectorAll('th[data-tri]').forEach(t => {
+                t.classList.toggle('trie', t === th);
+                t.classList.toggle('asc', t === th && ordreTri === 'asc');
+            });
             afficher();
         }));
         document.getElementById('recherche').addEventListener('input', afficher);

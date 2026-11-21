@@ -44,9 +44,9 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, lireCollection, lireDoc, invaliderCache } from "./js/firebase.js";
         import { toast, flash, confirmer, chargement, echapper, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate, estJoue } from "./js/matchs.js";
 
@@ -74,9 +74,8 @@
         });
 
         async function chargerMatchs() {
-            const snap = await getDocs(collection(db, "matchs"));
-            tousLesMatchs = [];
-            snap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+            const items = await lireCollection("matchs");
+            tousLesMatchs = [...items];
             trierParDate(tousLesMatchs).reverse(); // plus récents en premier
             majOptionsMatchs();
         }
@@ -122,7 +121,11 @@
             carte.classList.remove('hidden');
             conteneur.innerHTML = `<div class="skeleton small"></div><div class="skeleton small"></div>`;
 
-            const matchData = (await getDoc(doc(db, "matchs", matchId))).data();
+            const [matchRes, usersItems] = await Promise.all([
+                lireDoc("matchs", matchId),
+                lireCollection("utilisateurs")
+            ]);
+            const matchData = matchRes ? matchRes.data : {};
             const compo = matchData.compo || [];
             const statsExistantes = matchData.stats_joueurs || {};
 
@@ -132,14 +135,13 @@
                 return;
             }
 
-            const snap = await getDocs(collection(db, "utilisateurs"));
             let html = "";
-            snap.forEach(jDoc => {
-                if (!compo.includes(jDoc.id)) return;
-                const s = statsExistantes[jDoc.id] || {};
+            usersItems.forEach(({ id: jId, data: jData }) => {
+                if (!compo.includes(jId)) return;
+                const s = statsExistantes[jId] || {};
                 html += `
-                    <div class="joueur-ligne" data-id="${jDoc.id}">
-                        <span class="joueur-nom">${echapper(jDoc.data().prenom)} ${echapper(jDoc.data().nom)}</span>
+                    <div class="joueur-ligne" data-id="${jId}">
+                        <span class="joueur-nom">${echapper(jData.prenom)} ${echapper(jData.nom)}</span>
                         <div class="inputs-stats">
                             <div><label title="Buts">⚽</label><input type="number" inputmode="numeric" min="0" class="in-buts" value="${s.buts || 0}"></div>
                             <div><label title="Passes décisives">🎯</label><input type="number" inputmode="numeric" min="0" class="in-passes" value="${s.passes || 0}"></div>
@@ -167,6 +169,7 @@
             if (!ok) return;
             try {
                 await updateDoc(doc(db, "matchs", matchActifId), { stats_joueurs: {} });
+                invaliderCache("matchs");
                 document.querySelectorAll('#liste-effectif input').forEach(inp => { inp.value = 0; });
                 toast("Statistiques du match supprimées.");
             } catch (err) {
@@ -190,6 +193,7 @@
             chargement(bouton, true);
             try {
                 await updateDoc(doc(db, "matchs", matchActifId), { stats_joueurs: stats_joueurs });
+                invaliderCache("matchs");
                 flash("Stats enregistrées !");
                 window.location.href = "stats.html";
             } catch (e) {

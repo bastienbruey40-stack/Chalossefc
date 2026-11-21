@@ -1,6 +1,6 @@
 // Affichage et actions communes des cartes de match (Accueil + Calendrier + Détail du match)
 import { doc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { db } from "./firebase.js";
+import { db, invaliderCache } from "./firebase.js";
 import { toast, confirmer, ouvrirModal, chargement, formaterDate, versDate, versISO, echapper } from "./ui.js";
 
 const cache = new Map();
@@ -177,6 +177,7 @@ export function editerMatchComplet(id, d) {
             chargement(btnOk, true);
             try {
                 await updateDoc(doc(db, "matchs", id), maj);
+                invaliderCache("matchs");
                 toast('Match mis à jour !');
                 fermer(true);
             } catch (err) {
@@ -194,6 +195,7 @@ async function supprimerMatch(id, d) {
     });
     if (!ok) return false;
     await deleteDoc(doc(db, "matchs", id));
+    invaliderCache("matchs");
     toast('Match supprimé');
     return true;
 }

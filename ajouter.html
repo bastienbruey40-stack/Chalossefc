@@ -67,7 +67,7 @@
     <script type="module">
         import { collection, addDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, invaliderCache } from "./js/firebase.js";
         import { toast, flash, chargement } from "./js/ui.js";
 
         let posteChoisi = 'Milieu';
@@ -131,6 +131,7 @@
                 };
                 if (numeroChoisi !== null) payload.numero = numeroChoisi;
                 await addDoc(collection(db, "utilisateurs"), payload);
+                invaliderCache("utilisateurs");
                 flash(`${prenom} ${nom} (${posteChoisi}${numeroChoisi ? ` · n°${numeroChoisi}` : ''}) a rejoint l'effectif !`);
                 window.location.href = "effectif.html";
             } catch (err) {

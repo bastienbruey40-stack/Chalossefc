@@ -1,5 +1,5 @@
-// Service Worker PWA - FC Chalosse (Network-First avec repli sur le cache hors-ligne)
-const CACHE_NAME = 'chalosse-v17';
+// Service Worker PWA - FC Chalosse (Stale-While-Revalidate pour les ressources statiques, Network-First pour les pages)
+const CACHE_NAME = 'chalosse-v19';
 const ASSETS = [
     './',
     './index.html',
@@ -43,11 +43,35 @@ self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;
 
+    const estRessourceStatique = /\.(?:css|js|webp|png|jpe?g|svg|json|ico|woff2?)$/i.test(url.pathname);
+
+    if (estRessourceStatique) {
+        // Stale-While-Revalidate : réponse instantanée depuis le cache + mise à jour en arrière-plan
+        e.respondWith(
+            caches.open(CACHE_NAME).then((cache) =>
+                cache.match(e.request).then((cached) => {
+                    const majReseau = fetch(e.request).then((response) => {
+                        if (response && response.ok) {
+                            cache.put(e.request, response.clone());
+                        }
+                        return response;
+                    }).catch(() => cached);
+
+                    return cached || majReseau;
+                })
+            )
+        );
+        return;
+    }
+
+    // Pages HTML : Network-First avec repli cache hors-ligne
     e.respondWith(
-        fetch(e.request, { cache: 'no-cache' })
+        fetch(e.request)
             .then((response) => {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+                if (response && response.ok) {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+                }
                 return response;
             })
             .catch(() => caches.match(e.request))

@@ -56,9 +56,9 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { doc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil } from "./js/firebase.js";
+        import { db, auth, chargerProfil, lireCollection, invaliderCache } from "./js/firebase.js";
         import { toast, confirmer, chargement, formaterDate } from "./js/ui.js";
         import { carteMatch, activerActionsMatchs, trierParDate, estJoue } from "./js/matchs.js";
         import { importerMatchsFFF } from "./js/fff_import.js";
@@ -76,12 +76,21 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
-            const profil = await chargerProfil(user.uid).catch(() => null);
+            const [profil, items] = await Promise.all([
+                chargerProfil(user.uid).catch(() => null),
+                lireCollection("matchs").catch(() => null)
+            ]);
             estAdmin = profil?.role === "admin";
             if (estAdmin) {
                 document.getElementById('outils-admin').classList.remove('hidden');
             }
-            chargerMatchs();
+            if (items) {
+                tousLesMatchs = [...items];
+                trierParDate(tousLesMatchs);
+                afficher();
+            } else {
+                chargerMatchs(true);
+            }
         });
 
         document.getElementById('btn-import-fff').addEventListener('click', async () => {
@@ -92,8 +101,9 @@
                 if (ajoutes === 0 && misAJour === 0) {
                     toast("Tous les matchs FFF sont déjà à jour !", 'info');
                 } else {
+                    invaliderCache("matchs");
                     toast(`Synchronisé : ${ajoutes} match(s) ajouté(s), ${misAJour} score(s) mis à jour (compos conservées).`);
-                    await chargerMatchs();
+                    await chargerMatchs(true);
                 }
             } catch (e) {
                 toast("Erreur lors de l'import FFF : " + e.message, 'error');
@@ -102,11 +112,10 @@
             }
         });
 
-        async function chargerMatchs() {
+        async function chargerMatchs(force = false) {
             try {
-                const snap = await getDocs(collection(db, "matchs"));
-                tousLesMatchs = [];
-                snap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+                const items = await lireCollection("matchs", { force });
+                tousLesMatchs = [...items];
                 trierParDate(tousLesMatchs);
                 afficher();
             } catch (e) {
@@ -189,6 +198,7 @@
             chargement(btn, true, 'Suppression…');
             try {
                 await Promise.all(ids.map(id => deleteDoc(doc(db, "matchs", id))));
+                invaliderCache("matchs");
                 tousLesMatchs = tousLesMatchs.filter(m => !selection.has(m.id));
                 selection.clear();
                 modeSelection = false;
@@ -224,7 +234,7 @@
             afficher();
         }));
 
-        activerActionsMatchs(chargerMatchs);
+        activerActionsMatchs(() => chargerMatchs(true));
     </script>
 </body>
 </html>

@@ -1,5 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+    initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager,
+    collection, doc, getDoc, getDocs
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const _0x4f2a = (() => {
@@ -19,7 +22,17 @@ const _0x4f2a = (() => {
 })();
 
 export const app = _0x4f2a;
-export const db = getFirestore(_0x4f2a);
+
+// Activation du cache persistant IndexedDB multi-onglets de Firestore (chargement quasi instantané)
+let _db;
+try {
+    _db = initializeFirestore(_0x4f2a, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+} catch {
+    _db = getFirestore(_0x4f2a);
+}
+export const db = _db;
 export const auth = getAuth(_0x4f2a);
 
 export const SUPER_ADMIN_EMAIL = "bastienbruey1@gmail.com";
@@ -34,10 +47,40 @@ export function estProfilJoueur(data) {
     return data.role === "joueur" || data.role === "admin" || Boolean(data.poste);
 }
 
+// =========================================================
+// CACHE RAPIDE (mémoire + sessionStorage) POUR ACCÉLÉRER LA NAVIGATION
+// =========================================================
+const CACHE_PREFIX = 'fcc_v1_';
+const PROFIL_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const COL_TTL_MS = 45 * 1000;        // 45 secondes par défaut
+
+function lireSession(cle, maxAgeMs) {
+    try {
+        const brut = sessionStorage.getItem(CACHE_PREFIX + cle);
+        if (!brut) return null;
+        const parsed = JSON.parse(brut);
+        if (!parsed || typeof parsed.t !== 'number') return null;
+        if (Date.now() - parsed.t > maxAgeMs) return null;
+        return parsed.v;
+    } catch {
+        return null;
+    }
+}
+
+function ecrireSession(cle, valeur) {
+    try {
+        sessionStorage.setItem(CACHE_PREFIX + cle, JSON.stringify({ t: Date.now(), v: valeur }));
+    } catch {
+        // Quota dépassé ou navigation privée : on ignore silencieusement
+    }
+}
+
 const _c = new Map();
 export function chargerProfil(uid) {
+    if (!uid) return Promise.resolve(null);
     if (!_c.has(uid)) {
-        _c.set(uid, getDoc(doc(db, "utilisateurs", uid))
+        const enCache = lireSession('profil_' + uid, PROFIL_TTL_MS);
+        const majReseau = () => getDoc(doc(db, "utilisateurs", uid))
             .then(s => {
                 if (!s.exists()) return null;
                 const data = s.data();
@@ -45,9 +88,93 @@ export function chargerProfil(uid) {
                     data.role = "admin";
                     data.super_admin = true;
                 }
+                ecrireSession('profil_' + uid, data);
                 return data;
-            })
-            .catch(e => { _c.delete(uid); throw e; }));
+            });
+
+        if (enCache) {
+            if (auth.currentUser?.email && estSuperAdmin(auth.currentUser.email)) {
+                enCache.role = "admin";
+                enCache.super_admin = true;
+            }
+            _c.set(uid, Promise.resolve(enCache));
+            // Rafraîchissement discret en arrière-plan
+            majReseau().then(fresh => { if (fresh) _c.set(uid, Promise.resolve(fresh)); }).catch(() => {});
+        } else {
+            _c.set(uid, majReseau().catch(e => { _c.delete(uid); throw e; }));
+        }
     }
     return _c.get(uid);
+}
+
+const _colEnCours = new Map();
+
+/**
+ * Lit une collection Firestore avec cache sessionStorage ultra-rapide et déduplication réseau.
+ * Retourne un tableau [{ id, data }].
+ */
+export async function lireCollection(nom, { force = false, maxAgeMs = COL_TTL_MS } = {}) {
+    if (!force) {
+        const enCache = lireSession('col_' + nom, maxAgeMs);
+        if (Array.isArray(enCache)) return enCache;
+    }
+
+    const clePromesse = nom + (force ? ':force' : '');
+    if (_colEnCours.has(clePromesse)) {
+        return _colEnCours.get(clePromesse);
+    }
+
+    const p = getDocs(collection(db, nom))
+        .then(snap => {
+            const items = [];
+            snap.forEach(d => items.push({ id: d.id, data: d.data() }));
+            ecrireSession('col_' + nom, items);
+            return items;
+        })
+        .finally(() => {
+            _colEnCours.delete(clePromesse);
+        });
+
+    _colEnCours.set(clePromesse, p);
+    return p;
+}
+
+/**
+ * Lit un document unique en profitant d'abord du cache de la collection si disponible et frais.
+ * Retourne { id, data } ou null s'il n'existe pas.
+ */
+export async function lireDoc(nomCollection, id, { force = false, maxAgeMs = COL_TTL_MS } = {}) {
+    if (!id) return null;
+    if (!force) {
+        const colCache = lireSession('col_' + nomCollection, maxAgeMs);
+        if (Array.isArray(colCache)) {
+            const trouve = colCache.find(item => item.id === id);
+            if (trouve) return trouve;
+        }
+    }
+    const snap = await getDoc(doc(db, nomCollection, id));
+    if (!snap.exists()) return null;
+    return { id: snap.id, data: snap.data() };
+}
+
+/**
+ * Invalide le cache sessionStorage pour une ou plusieurs collections (à appeler après une écriture/suppression).
+ */
+export function invaliderCache(...noms) {
+    try {
+        if (noms.length === 0) {
+            for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                const k = sessionStorage.key(i);
+                if (k && k.startsWith(CACHE_PREFIX)) sessionStorage.removeItem(k);
+            }
+            _c.clear();
+            return;
+        }
+        noms.forEach(nom => {
+            sessionStorage.removeItem(CACHE_PREFIX + 'col_' + nom);
+            if (nom === 'utilisateurs') _c.clear();
+        });
+    } catch {
+        // Ignore
+    }
 }

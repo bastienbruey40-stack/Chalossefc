@@ -387,6 +387,7 @@ th {
 th[data-tri] { cursor: pointer; }
 th[data-tri]:hover { color: #fff; }
 th.trie::after { content: " ▼"; font-size: .7em; }
+th.trie.asc::after { content: " ▲"; }
 td { border-top: 1px solid var(--border); font-size: .95rem; }
 tbody tr:hover td { background: var(--surface-2); }
 th:first-child, .nom-joueur { position: sticky; left: 0; text-align: left; }

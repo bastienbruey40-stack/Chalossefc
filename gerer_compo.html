@@ -89,9 +89,9 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur, lireCollection, lireDoc, invaliderCache } from "./js/firebase.js";
         import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, obtenirNumeroJoueur, ouvrirFicheJoueur } from "./js/tactique.js";
@@ -142,19 +142,22 @@
             }
         });
 
-        async function initialiserPage() {
+        async function initialiserPage(force = false) {
             try {
                 listeTousLesJoueurs = [];
                 joueursMap = {};
                 compteursApparitions = {};
 
-                // 1. Récupérer les joueurs et admins
-                const usersSnap = await getDocs(collection(db, "utilisateurs"));
-                usersSnap.forEach(u => {
-                    const data = u.data();
+                // Chargement parallèle des joueurs et des matchs
+                const [usersItems, matchsItems] = await Promise.all([
+                    lireCollection("utilisateurs", { force }),
+                    lireCollection("matchs", { force })
+                ]);
+
+                usersItems.forEach(({ id, data }) => {
                     if (estProfilJoueur(data)) {
                         const j = {
-                            id: u.id,
+                            id,
                             prenom: data.prenom,
                             nom: data.nom || '',
                             nomComplet: `${data.prenom} ${data.nom || ''}`.trim(),
@@ -162,15 +165,12 @@
                             numero: (data.numero >= 1 && data.numero <= 14) ? Number(data.numero) : null
                         };
                         listeTousLesJoueurs.push(j);
-                        joueursMap[u.id] = j;
-                        compteursApparitions[u.id] = { premiere: 0, reserve: 0 };
+                        joueursMap[id] = j;
+                        compteursApparitions[id] = { premiere: 0, reserve: 0 };
                     }
                 });
 
-                // 2. Récupérer les matchs
-                const matchsSnap = await getDocs(collection(db, "matchs"));
-                tousLesMatchs = [];
-                matchsSnap.forEach(d => tousLesMatchs.push({ id: d.id, data: d.data() }));
+                tousLesMatchs = [...matchsItems];
                 trierParDate(tousLesMatchs);
 
                 let nbP = 0, nbR = 0;
@@ -258,8 +258,9 @@
             sessionStorage.setItem('chalosse_compo_match_id', matchActifId);
             window.history.replaceState(null, '', '?match=' + encodeURIComponent(matchActifId));
 
-            const matchDoc = await getDoc(doc(db, "matchs", matchActifId));
-            const matchData = matchDoc.exists() ? matchDoc.data() : {};
+            const enMemoire = tousLesMatchs.find(m => m.id === matchActifId);
+            const matchRes = enMemoire || await lireDoc("matchs", matchActifId);
+            const matchData = matchRes ? matchRes.data : {};
             const etat = extraireCompoTactique(matchData);
 
             dispositifActif = etat.dispositif;
@@ -298,6 +299,7 @@
                         compo: listeCompoPlate,
                         compo_tactique: compoTactique
                     });
+                    invaliderCache("matchs");
                 } catch (error) {
                     console.error("Erreur de sauvegarde automatique :", error);
                     toast("Erreur lors de la sauvegarde automatique.", 'error');
@@ -935,18 +937,6 @@
             return `${optCreer}${optIgnorer}${joueursHtml}`;
         }
 
-        // Importer une feuille de match FFF (epreuves.fff.fr Ctrl+A / Ctrl+C) ou une liste de noms avec aperçu
-        document.getElementById('btn-importer-noms').addEventListener('click', () => {
-            if (!matchActifId) {
-                toast("Sélectionnez d'abord un match.", 'info');
-                return;
-            }
-            const config = DISPOSITIFS[dispositifActif] || DISPOSITIFS["4-3-3"];
-            let texteMemorise = '';
-
-            ouvrirModal((boite, fermer) => {
-                boite.classList.add('modal-wide');
-
         // Saisir manuellement ou importer une feuille de match FFF / liste avec suggestions intelligentes
         document.getElementById('btn-importer-noms').addEventListener('click', () => {
             if (!matchActifId) {
@@ -985,6 +975,7 @@
 
             ouvrirModal((boite, fermer) => {
                 boite.classList.add('modal-wide');
+                let rafraichirSlots = () => {};
 
                 function afficherEtape1() {
                     const nbTitActuels = Object.keys(slotsTit).length;
@@ -1045,8 +1036,6 @@
                             </div>
                         </div>
                     `;
-
-                    let rafraichirSlots = () => {};
 
                     // Gestion des onglets
                     const btnTabSaisie = boite.querySelector('#tab-btn-saisie');
@@ -1346,7 +1335,8 @@
                             try {
                                 toast("Création du joueur en cours…", 'info');
                                 const nouveauId = await creerJoueurEffectif({ nomBrut, poste: slotInfo.categorie });
-                                await initialiserPage();
+                                invaliderCache("utilisateurs");
+                                await initialiserPage(true);
                                 placerJoueurDansSlot(nouveauId);
                                 toast(`Joueur « ${nomBrut} » créé et placé !`);
                             } catch (err) {
@@ -1694,6 +1684,7 @@
 
                             await sauvegardeEnCours;
                             await updateDoc(doc(db, "matchs", matchActifId), payload);
+                            invaliderCache("matchs", "utilisateurs");
 
                             titulaires = nouveauxTitulaires;
                             remplacants = nouveauxRemplacants;
@@ -1745,9 +1736,10 @@
                     compo: listeCompoPlate,
                     compo_tactique: compoTactique
                 });
+                invaliderCache("matchs");
                 const nbTit = Object.keys(titulaires).length;
                 toast(`Composition (${dispositifActif}) enregistrée : ${nbTit} titulaire(s) et ${remplacants.length} remplaçant(s) !`);
-                await initialiserPage();
+                await initialiserPage(true);
             } catch (error) {
                 console.error("Erreur de sauvegarde :", error);
                 toast("Une erreur est survenue lors de l'enregistrement.", 'error');

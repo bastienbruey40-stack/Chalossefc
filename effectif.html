@@ -50,9 +50,9 @@
     </main>
 
     <script type="module">
-        import { collection, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { db, auth, chargerProfil, estProfilJoueur } from "./js/firebase.js";
+        import { db, auth, chargerProfil, estProfilJoueur, lireCollection, invaliderCache } from "./js/firebase.js";
         import { toast, confirmer, formulaire, chargement, echapper, initiales } from "./js/ui.js";
         import { ouvrirFicheJoueur } from "./js/tactique.js";
 
@@ -68,19 +68,23 @@
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
-            const profil = await chargerProfil(user.uid).catch(() => null);
+            const [profil] = await Promise.all([
+                chargerProfil(user.uid).catch(() => null),
+                chargerTousLesJoueurs()
+            ]);
             estAdmin = profil?.role === "admin";
-            if (estAdmin) document.getElementById('outils-admin').classList.remove('hidden');
-            chargerTousLesJoueurs();
+            if (estAdmin) {
+                document.getElementById('outils-admin').classList.remove('hidden');
+                afficher();
+            }
         });
 
-        async function chargerTousLesJoueurs() {
+        async function chargerTousLesJoueurs(force = false) {
             try {
-                const snap = await getDocs(collection(db, "utilisateurs"));
+                const items = await lireCollection("utilisateurs", { force });
                 listeJoueurs = [];
-                snap.forEach(d => {
-                    const data = d.data();
-                    if (estProfilJoueur(data)) listeJoueurs.push({ id: d.id, ...data });
+                items.forEach(({ id, data }) => {
+                    if (estProfilJoueur(data)) listeJoueurs.push({ id, ...data });
                 });
                 trierJoueurs();
                 majResume();
@@ -192,6 +196,7 @@
                     }
                     return deleteDoc(doc(db, "utilisateurs", id));
                 }));
+                invaliderCache("utilisateurs");
                 listeJoueurs = listeJoueurs.filter(j => !selection.has(j.id));
                 selection.clear();
                 modeSelection = false;
@@ -260,6 +265,7 @@
                         poste: res.poste.trim() || 'Milieu',
                         numero: numVal
                     });
+                    invaliderCache("utilisateurs");
                     joueur.prenom = res.prenom.trim();
                     joueur.nom = res.nom.trim();
                     joueur.poste = res.poste.trim() || 'Milieu';
@@ -296,6 +302,7 @@
                     } else {
                         await deleteDoc(doc(db, "utilisateurs", btnSuppr.dataset.id));
                     }
+                    invaliderCache("utilisateurs");
                     listeJoueurs = listeJoueurs.filter(j => j.id !== btnSuppr.dataset.id);
                     majResume();
                     afficher();

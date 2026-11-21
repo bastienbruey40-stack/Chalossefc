@@ -1,6 +1,5 @@
 // Dispositifs tactiques, coordonnées sur le terrain, rendu visuel et fiche résumé joueur.
-import { collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { db } from "./firebase.js";
+import { lireCollection, lireDoc } from "./firebase.js";
 import { echapper, ouvrirModal, formaterDate, versDate } from "./ui.js";
 
 // Coordonnées (x, y) en pourcentage sur un terrain vertical :
@@ -363,14 +362,14 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
             </div>`;
 
         try {
-            const [joueurSnap, matchsSnap, notesSnap] = await Promise.all([
-                getDoc(doc(db, "utilisateurs", joueurId)),
-                getDocs(collection(db, "matchs")),
-                getDocs(collection(db, "notes"))
+            const [joueurRes, matchsItems, notesItems] = await Promise.all([
+                lireDoc("utilisateurs", joueurId),
+                lireCollection("matchs"),
+                lireCollection("notes")
             ]);
 
             if (!boite.isConnected) return;
-            if (!joueurSnap.exists()) {
+            if (!joueurRes) {
                 boite.innerHTML = `
                     <h3 class="modal-title">Joueur introuvable</h3>
                     <p class="modal-text">Ce joueur n'existe plus dans la base de données.</p>
@@ -381,7 +380,7 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
                 return;
             }
 
-            const j = joueurSnap.data();
+            const j = joueurRes.data;
             const nomComplet = `${j.prenom || ''} ${(j.nom || '').toUpperCase()}`.trim() || 'Joueur';
             const poste = j.poste || 'Poste non renseigné';
 
@@ -389,9 +388,8 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
             const notesParMatch = new Map();
             let totalNotes = 0;
             let nbVotes = 0;
-            notesSnap.forEach(nDoc => {
-                const n = nDoc.data();
-                const parts = nDoc.id.split('_');
+            notesItems.forEach(({ id: docId, data: n }) => {
+                const parts = docId.split('_');
                 const jId = n.joueurId || n.joueur_id || parts[1];
                 if (jId !== joueurId) return;
                 const val = parseFloat(n.note);
@@ -413,8 +411,7 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
             let buts = 0, passes = 0, jaunes = 0, rouges = 0;
             const historiqueMatchs = [];
 
-            matchsSnap.forEach(mDoc => {
-                const m = mDoc.data();
+            matchsItems.forEach(({ id: mDocId, data: m }) => {
                 const tactique = extraireCompoTactique(m);
                 const compo = Array.isArray(m.compo) ? m.compo : [];
 
@@ -441,7 +438,7 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
                         rouges += parseInt(sMatch.rouges) || 0;
                     }
 
-                    const noteM = notesParMatch.get(mDoc.id);
+                    const noteM = notesParMatch.get(mDocId);
                     const moyM = noteM ? (noteM.total / noteM.nb).toFixed(1) : null;
                     const numMatch = obtenirNumeroJoueur(joueurId, {
                         numeros: tactique.numeros,
@@ -458,7 +455,7 @@ export function ouvrirFicheJoueur(joueurId, { matchCourantId = null, numeroMaill
                         : (estSurBanc || dansCompo ? `Banc${numMatch ? ` n°${numMatch}` : ''}` : 'Match');
 
                     historiqueMatchs.push({
-                        id: mDoc.id,
+                        id: mDocId,
                         date: m.date,
                         ts: versDate(m.date)?.getTime() || 0,
                         adversaire: m.adversaire || 'Adversaire',
