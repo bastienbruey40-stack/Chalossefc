@@ -1435,5 +1435,27 @@ tr.row-chalosse td {
     border-bottom: 1px solid color-mix(in srgb, var(--jaune) 45%, transparent);
 }
 
+/* Choix de l'équipe affichée en haut sur mobile dans le calendrier */
+.mobile-order-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: -4px 0 4px;
+    padding: 0 2px;
+}
+.mobile-order-label {
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--texte-2);
+}
+@media (min-width: 900px) {
+    .mobile-order-bar { display: none; }
+}
+@media (max-width: 899px) {
+    #zone-matchs.reserve-en-haut #sec-reserve { order: -1; }
+}
+
 
 

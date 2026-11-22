@@ -41,12 +41,20 @@
             <button class="btn-onglet" data-filtre="tous">Tous</button>
         </div>
 
+        <div class="mobile-order-bar" id="barre-ordre-equipe">
+            <span class="mobile-order-label">Afficher en haut :</span>
+            <div class="pitch-toggle-group" role="group" aria-label="Équipe affichée en haut">
+                <button type="button" class="pitch-toggle-btn active" data-ordre-equipe="premiere">🔵 Première</button>
+                <button type="button" class="pitch-toggle-btn" data-ordre-equipe="reserve">🟢 Réserve</button>
+            </div>
+        </div>
+
         <div class="grid-2" id="zone-matchs">
-            <section>
+            <section id="sec-premiere">
                 <h2 class="titre-section titre-premiere">Équipe Première <span class="count" id="nb-premiere">–</span></h2>
                 <div id="matchs-premiere" class="match-list"><div class="skeleton"></div><div class="skeleton"></div></div>
             </section>
-            <section>
+            <section id="sec-reserve">
                 <h2 class="titre-section titre-reserve">Équipe Réserve <span class="count" id="nb-reserve">–</span></h2>
                 <div id="matchs-reserve" class="match-list"><div class="skeleton"></div><div class="skeleton"></div></div>
             </section>
@@ -78,6 +86,30 @@
 
         const btnModeSelect = document.getElementById('btn-mode-select');
         const barreSelection = document.getElementById('barre-selection');
+        const zoneMatchs = document.getElementById('zone-matchs');
+
+        // Choix de l'équipe affichée en haut sur téléphone (mémorisé en localStorage)
+        const CLE_ORDRE_EQUIPE = 'chalosse_calendrier_equipe_haut';
+        let equipeEnHaut = 'premiere';
+        try {
+            if (localStorage.getItem(CLE_ORDRE_EQUIPE) === 'reserve') equipeEnHaut = 'reserve';
+        } catch (_) {}
+
+        function appliquerOrdreEquipe() {
+            zoneMatchs.classList.toggle('reserve-en-haut', equipeEnHaut === 'reserve');
+            document.querySelectorAll('[data-ordre-equipe]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.ordreEquipe === equipeEnHaut);
+            });
+        }
+        appliquerOrdreEquipe();
+
+        document.querySelectorAll('[data-ordre-equipe]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                equipeEnHaut = btn.dataset.ordreEquipe === 'reserve' ? 'reserve' : 'premiere';
+                try { localStorage.setItem(CLE_ORDRE_EQUIPE, equipeEnHaut); } catch (_) {}
+                appliquerOrdreEquipe();
+            });
+        });
 
         onAuthStateChanged(auth, async (user) => {
             if (!user) { window.location.href = "connexion.html"; return; }
