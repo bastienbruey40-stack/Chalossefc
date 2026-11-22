@@ -97,7 +97,7 @@
         import { doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { db, auth, chargerProfil, estProfilJoueur, lireCollection, lireDoc, invaliderCache } from "./js/firebase.js";
-        import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, creerSelectCustom } from "./js/ui.js";
+        import { toast, flash, confirmer, ouvrirModal, chargement, echapper, initiales, formaterDate, versDate, creerSelectCustom } from "./js/ui.js";
         import { trierParDate } from "./js/matchs.js";
         import { DISPOSITIFS, extraireCompoTactique, compilerListeCompo, rendreTerrainHTML, obtenirNumeroJoueur, ouvrirFicheJoueur } from "./js/tactique.js";
         import { creerJoueurEffectif } from "./js/fff_import.js";
@@ -178,11 +178,8 @@
                 tousLesMatchs = [...matchsItems];
                 trierParDate(tousLesMatchs);
 
-                let nbP = 0, nbR = 0;
                 tousLesMatchs.forEach(({ data }) => {
                     const typeEquipe = data.equipe_type === "premiere" ? "premiere" : "reserve";
-                    if (typeEquipe === "premiere") nbP++; else nbR++;
-
                     if (Array.isArray(data.compo)) {
                         data.compo.forEach(joueurId => {
                             if (compteursApparitions[joueurId]) compteursApparitions[joueurId][typeEquipe]++;
@@ -190,8 +187,7 @@
                     }
                 });
 
-                document.getElementById('sub-nb-premiere').textContent = `${nbP} match${nbP > 1 ? 's' : ''}`;
-                document.getElementById('sub-nb-reserve').textContent = `${nbR} match${nbR > 1 ? 's' : ''}`;
+                majCompteursEquipes();
 
                 // Si un match est actif, passé dans l'URL (?match=...) ou mémorisé en session, on le restaure
                 const cibleId = matchActifId || new URLSearchParams(window.location.search).get('match') || sessionStorage.getItem('chalosse_compo_match_id');
@@ -217,10 +213,38 @@
             }
         }
 
+        function majCompteursEquipes() {
+            let nbP = 0, nbPAFaire = 0, nbR = 0, nbRAFaire = 0;
+            tousLesMatchs.forEach(({ data }) => {
+                const aFaire = !Array.isArray(data.compo) || data.compo.length === 0;
+                if (data.equipe_type === "premiere") {
+                    nbP++;
+                    if (aFaire) nbPAFaire++;
+                } else {
+                    nbR++;
+                    if (aFaire) nbRAFaire++;
+                }
+            });
+            document.getElementById('sub-nb-premiere').textContent =
+                `${nbP} match${nbP > 1 ? 's' : ''}${nbPAFaire > 0 ? ` · ${nbPAFaire} à faire` : ''}`;
+            document.getElementById('sub-nb-reserve').textContent =
+                `${nbR} match${nbR > 1 ? 's' : ''}${nbRAFaire > 0 ? ` · ${nbRAFaire} à faire` : ''}`;
+        }
+
         function rafraichirMenuMatchs(garderSelection = false) {
-            const matchsEquipe = tousLesMatchs.filter(m =>
-                (m.data.equipe_type === 'premiere' ? 'premiere' : 'reserve') === equipeActive
-            );
+            const matchsEquipe = tousLesMatchs
+                .filter(m => (m.data.equipe_type === 'premiere' ? 'premiere' : 'reserve') === equipeActive)
+                .sort((a, b) => {
+                    const aAFaire = (!Array.isArray(a.data.compo) || a.data.compo.length === 0) ? 0 : 1;
+                    const bAFaire = (!Array.isArray(b.data.compo) || b.data.compo.length === 0) ? 0 : 1;
+                    if (aAFaire !== bAFaire) return aAFaire - bAFaire;
+
+                    const tA = versDate(a.data.date)?.getTime() ?? Infinity;
+                    const tB = versDate(b.data.date)?.getTime() ?? Infinity;
+                    // Compos "À faire" en premier (ordre chronologique), puis compos déjà faites (plus récentes en premier)
+                    return aAFaire === 0 ? (tA - tB) : (tB - tA);
+                });
+
             const options = matchsEquipe.map(({ id, data }) => {
                 const nb = Array.isArray(data.compo) ? data.compo.length : 0;
                 const disp = data.compo_tactique?.dispositif ? ` · ${data.compo_tactique.dispositif}` : '';
@@ -295,6 +319,7 @@
             if (entree) {
                 entree.data.compo = listeCompoPlate;
                 entree.data.compo_tactique = compoTactique;
+                majCompteursEquipes();
                 rafraichirMenuMatchs(true);
             }
 
